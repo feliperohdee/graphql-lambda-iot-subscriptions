@@ -1,0 +1,20 @@
+{
+  "name": "lambdaGraphqlSubscriptions",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "aws-sdk": "^2.162.0",
+    "graphql": "^0.11.7",
+    "lodash": "^4.17.4",
+    "rxjs": "^5.5.2",
+    "smallorange-dynamodb-client": "^1.1.5"
+  },
+  "scripts": {
+    "clean": "rm -rf lambda.zip",
+    "zip": "zip -9 -r lambda.zip .",
+    "s3": "aws s3 cp lambda.zip s3://lambdas.smallorange.co/graphqlSubscriptions/lambda.zip",
+    "updateLambda": "aws lambda update-function-code --function-name graphqlSubscriptions --s3-bucket lambdas.smallorange.co --s3-key graphqlSubscriptions/lambda.zip --region us-east-1",
+    "deploy": "npm run clean && npm run zip && npm run s3 && npm run updateLambda; npm run clean"
+  }
+}
