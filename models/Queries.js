@@ -4,7 +4,7 @@ const {
 	Crud
 } = require('smallorange-dynamodb-client');
 
-const tableName = 'iotQueries';
+const tableName = 'graphqlSubscriptionQueries';
 const tableSchema = {
 	primaryKeys: {
 		partition: 'clientId',

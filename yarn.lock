@@ -105,6 +105,10 @@ sax@>=0.6.0:
   version "1.2.4"
   resolved "https://registry.yarnpkg.com/sax/-/sax-1.2.4.tgz#2816234e2378bddc4e5354fab5caa895df7100d9"
 
+smallorange-beauty-error@^1.0.3:
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/smallorange-beauty-error/-/smallorange-beauty-error-1.0.3.tgz#7607843343a14ebf9ed853f25c04abebfb902a49"
+
 smallorange-dynamodb-client@^1.1.5:
   version "1.1.5"
   resolved "https://registry.yarnpkg.com/smallorange-dynamodb-client/-/smallorange-dynamodb-client-1.1.5.tgz#bf579c1122c5402e0b9c3aa2376b23ad1940d9c5"

@@ -1,9 +1,44 @@
 const _ = require('lodash');
-const App = require('./App');
+const beautyError = require('smallorange-beauty-error');
+const {
+	GraphQLSchema,
+	GraphQLObjectType,
+	GraphQLString
+} = require('graphql');
 
-const app = new App();
+const Subscriptions = require('./Subscriptions');
 
-app.queries = {
+const Message = new GraphQLObjectType({
+	name: 'Message',
+	fields: {
+		text: {
+			type: GraphQLString
+		}
+	}
+});
+
+const schema = new GraphQLSchema({
+	query: new GraphQLObjectType({
+		name: 'Query',
+		fields: {
+			message: {
+				type: Message
+			}
+		}
+	}),
+	subscription: new GraphQLObjectType({
+		name: 'Subscription',
+		fields: {
+			onMessage: {
+				type: Message,
+				// args: {},
+				resolve: root => root
+			}
+		}
+	})
+});
+
+const events = {
 	onMessage: {
 		inbound: (clientId, queryObj, payload) => {
 			return [
@@ -18,22 +53,24 @@ app.queries = {
 	}
 };
 
+const subscriptions = new Subscriptions(events, schema);
+
 exports.handler = (event, context, callback) => {
 	const {
 		payload,
 		topic
 	} = event;
 	
-	console.log(JSON.stringify(event, null, 2));
+	// console.log(JSON.stringify(event, null, 2));
 
 	let operation;
 
 	if (_.startsWith(topic, 'inbound')) {
-		operation = app.onInbound(topic, payload);
+		operation = subscriptions.onInbound(topic, payload);
 	} else if (_.startsWith(topic, 'subscribe')) {
-		operation = app.onSubscribe(topic, payload);
+		operation = subscriptions.onSubscribe(topic, payload);
 	} else if (_.startsWith(topic, '$aws/events/presence/disconnected')) {
-		operation = app.onDisconnect(topic, payload);
+		operation = subscriptions.onDisconnect(topic, payload);
 	}
 
 	if (!operation) {
@@ -46,7 +83,7 @@ exports.handler = (event, context, callback) => {
 			callback(null, response);
 		},
 		err => {
-			console.log(err);
+			console.log(beautyError(err));
 			callback(err);
 		}
 	);

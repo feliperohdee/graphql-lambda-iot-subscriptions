@@ -10,7 +10,7 @@ AWS.config.update({
 
 module.exports = {
 	iot: new AWS.IotData({
-		endpoint: process.env.IOT_ENDPOINT || 'a2p3sz3zxqdecq.iot.us-east-1.amazonaws.com'
+		endpoint: process.env.IOT_ENDPOINT
 	}),
 	dynamoDb: new AWS.DynamoDB({
 		endpoint: production ? null : 'http://localhost:9090'

@@ -1,43 +1,10 @@
 const {
 	GraphQLError,
-	GraphQLSchema,
-	GraphQLObjectType,
-	GraphQLString,
 	graphql,
 	parse,
 	specifiedRules,
 	validate
 } = require('graphql');
-
-const Message = new GraphQLObjectType({
-	name: 'Message',
-	fields: {
-		text: {
-			type: GraphQLString
-		}
-	}
-});
-
-const schema = new GraphQLSchema({
-	query: new GraphQLObjectType({
-		name: 'Query',
-		fields: {
-			message: {
-				type: Message
-			}
-		}
-	}),
-	subscription: new GraphQLObjectType({
-		name: 'Subscription',
-		fields: {
-			onMessage: {
-				type: Message,
-				// args: {},
-				resolve: root => root
-			}
-		}
-	})
-});
 
 const subscriptionHasSingleRootField = context => {
 	return {
@@ -79,10 +46,10 @@ const subscriptionHasSingleRootField = context => {
 }
 
 module.exports = {
-	execute: (requestString, rootValue, contextValue, variableValues) => {
+	execute: (schema, requestString, rootValue, contextValue, variableValues) => {
 		return graphql(schema, requestString, rootValue, contextValue, variableValues);
 	},
-	validate: requestString => {
+	validate: (schema, requestString) => {
 		const documentAST = parse(requestString);
 		const errors = validate(
 			schema,
