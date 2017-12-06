@@ -1,7 +1,5 @@
 const AWS = require('aws-sdk');
 
-const production = process.env.NODE_ENV === 'production';
-
 AWS.config.update({
 	accessKeyId: process.env.ACCESS_KEY_ID,
 	secretAccessKey: process.env.SECRET_ACCESS_KEY,
@@ -10,9 +8,9 @@ AWS.config.update({
 
 module.exports = {
 	iot: new AWS.IotData({
-		endpoint: process.env.IOT_ENDPOINT || 'dwd'
+		endpoint: process.env.IOT_ENDPOINT
 	}),
 	dynamoDb: new AWS.DynamoDB({
-		endpoint: production ? null : 'http://localhost:9090'
+		endpoint: process.env.DYNAMODB_ENDPOINT
 	})
 };

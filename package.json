@@ -1,5 +1,5 @@
 {
-  "name": "lambdaGraphqlSubscriptions",
+  "name": "smallorange-lambda-iot-graphql-subscriptions",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
@@ -13,10 +13,17 @@
     "smallorange-dynamodb-client": "^1.1.5"
   },
   "scripts": {
+    "test": "./node_modules/.bin/_mocha **.spec.js --recursive --watch --timeout 5000",
     "clean": "rm -rf lambda.zip",
     "zip": "zip -9 -r lambda.zip .",
     "s3": "aws s3 cp lambda.zip s3://lambdas.smallorange.co/graphqlSubscriptions/lambda.zip",
     "updateLambda": "aws lambda update-function-code --function-name graphqlSubscriptions --s3-bucket lambdas.smallorange.co --s3-key graphqlSubscriptions/lambda.zip --region us-east-1",
     "deploy": "npm run clean && npm run zip && npm run s3 && npm run updateLambda; npm run clean"
+  },
+  "devDependencies": {
+    "chai": "^4.1.2",
+    "mocha": "^4.0.1",
+    "sinon": "^4.1.2",
+    "sinon-chai": "^2.14.0"
   }
 }

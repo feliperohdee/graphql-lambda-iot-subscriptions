@@ -1,10 +1,7 @@
-const _ = require('lodash');
-const cuid = require('cuid');
 const {
 	Crud
 } = require('smallorange-dynamodb-client');
 
-const tableName = 'graphqlSubscriptionQueries';
 const tableSchema = {
 	primaryKeys: {
 		partition: 'clientId',
@@ -18,21 +15,22 @@ const tableSchema = {
 };
 
 module.exports = class Queries extends Crud {
-	constructor(app) {
+	constructor(app, tableName) {
 		super(tableName, tableSchema, {
 			dynamoDb: app.dynamoDb
 		});
-
+		
+		this.tableName = tableName;
 		this.app = app;
 
 		this.createTable()
-			.subscribe(() => null);
+			.subscribe(() => null, console.log);
 	}
 
 	deleteTable() {
 		return this.request
 			.routeCall('deleteTable', {
-				TableName: tableName
+				TableName: this.tableName
 			});
 	}
 
@@ -41,7 +39,7 @@ module.exports = class Queries extends Crud {
 			.describe()
 			.catch(() => this.request
 				.routeCall('createTable', {
-					TableName: tableName,
+					TableName: this.tableName,
 					ProvisionedThroughput: {
 						ReadCapacityUnits: 1,
 						WriteCapacityUnits: 1
