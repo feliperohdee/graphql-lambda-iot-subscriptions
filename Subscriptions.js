@@ -84,7 +84,7 @@ module.exports = class Subscriptions {
 					payload
 				}
 			})
-			.catch(err => Observable.of(beautyError(err, {
+			.catch(err => Observable.throw(beautyError(err, {
 				scope: 'publish',
 				topic,
 				payload
@@ -113,7 +113,7 @@ module.exports = class Subscriptions {
 					clientId
 				}
 			})
-			.catch(err => Observable.of(beautyError(err, {
+			.catch(err => Observable.throw(beautyError(err, {
 				scope: 'onDisconnect',
 				clientId
 			})));
@@ -126,7 +126,8 @@ module.exports = class Subscriptions {
 			requestString = null,
 			variableValues = {}
 		} = payload;
-
+		
+		const isMqtt = !!topic;
 		const nonQueryPayload = _.omit(payload, [
 			'clientId',
 			'contextValue',
@@ -139,15 +140,16 @@ module.exports = class Subscriptions {
 		}
 
 		if (!requestString) {
-			this.publish(clientId, {
-				error: 'no requestString provided.'
-			});
-
-			return Observable.of(beautyError('no requestString provided', {
-				scope: 'onSubscribe',
-				clientId,
-				errors
-			}));
+			return this.publish(clientId, {
+					errors: [
+						beautyError('no requestString provided.')
+					]
+				})
+				.mergeMap(() => Observable.throw(beautyError('no requestString provided', {
+					scope: 'onSubscribe',
+					clientId,
+					errors
+				})));
 		}
 
 		const {
@@ -156,11 +158,11 @@ module.exports = class Subscriptions {
 		} = this.graphqlValidate(requestString);
 
 		if (errors.length) {
-			this.publish(clientId, {
-				error: errors
+			isMqtt && this.publish(clientId, {
+				errors
 			});
 
-			return Observable.of(beautyError('invalid requestString', {
+			return Observable.throw(beautyError('invalid requestString', {
 				scope: 'onSubscribe',
 				clientId,
 				contextValue,
@@ -202,7 +204,7 @@ module.exports = class Subscriptions {
 							delay: err.delay * 1000,
 							max: 5
 						}))
-						.catch(err => Observable.of(beautyError(err, {
+						.catch(err => Observable.throw(beautyError(err, {
 							scope: 'onSubscribe.insert',
 							clientId,
 							contextValue,
@@ -231,7 +233,7 @@ module.exports = class Subscriptions {
 				delay: err.delay * 1000,
 				max: 5
 			}))
-			.catch(err => Observable.of(beautyError(err, {
+			.catch(err => Observable.throw(beautyError(err, {
 				scope: 'onInbound.fetchTopics',
 				topic
 			})));
@@ -249,7 +251,11 @@ module.exports = class Subscriptions {
 					}))
 					.mergeMap(response => {
 						return Observable.from(outbound)
-							.mergeMap(topic => this.publish(topic, response))
+							.mergeMap(topic => {
+								// suppress error early to not break the chain
+								return this.publish(topic, response)
+									.catch(err => Observable.of(err));
+							})
 							.toArray();
 					});
 			}
