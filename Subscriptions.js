@@ -1,4 +1,5 @@
 const _ = require('lodash');
+const md5 = require('md5');
 const AWS = require('./AWS');
 const graphql = require('./graphql');
 const models = require('./models');
@@ -75,7 +76,7 @@ module.exports = class Subscriptions {
 			})
 			.onRetryableError(err => ({
 				retryable: err.retryable,
-				delay: err.delay * 1000,
+				delay: err.retryDelay * 1000,
 				max: 5
 			}))
 			.mapTo({
@@ -105,7 +106,7 @@ module.exports = class Subscriptions {
 			})
 			.onRetryableError(err => ({
 				retryable: err.retryable,
-				delay: err.delay * 1000,
+				delay: err.retryDelay * 1000,
 				max: 5
 			}))
 			.mapTo({
@@ -184,24 +185,28 @@ module.exports = class Subscriptions {
 
 		if (inbound.length) {
 			const queryString = JSON.stringify(queryObj);
+			const id = md5(queryString);
 
 			return Observable.from(inbound)
 				.mergeMap(topic => {
-					return this.models.queries.insertOrReplace({
+					return this.models.queries.insertOrUpdate({
 							clientId,
+							id,
 							topic,
-							query: queryString
+							query: queryString,
+							ttl: _.floor((_.now() / 1000) + 43200) // 12 hours
 						})
 						.mapTo({
 							onSubscribe: {
 								clientId,
+								id,
 								requestString,
 								topic
 							}
 						})
 						.onRetryableError(err => ({
 							retryable: err.retryable,
-							delay: err.delay * 1000,
+							delay: err.retryDelay * 1000,
 							max: 5
 						}))
 						.catch(err => Observable.throw(beautyError(err, {
@@ -209,6 +214,7 @@ module.exports = class Subscriptions {
 							clientId,
 							contextValue,
 							errors,
+							id,
 							requestString,
 							variableValues,
 							topic
@@ -230,7 +236,7 @@ module.exports = class Subscriptions {
 			.query('#topic = :topic')
 			.onRetryableError(err => ({
 				retryable: err.retryable,
-				delay: err.delay * 1000,
+				delay: err.retryDelay * 1000,
 				max: 5
 			}))
 			.catch(err => Observable.throw(beautyError(err, {

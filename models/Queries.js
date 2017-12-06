@@ -8,7 +8,7 @@ const tableName = 'graphqlSubscriptionQueries';
 const tableSchema = {
 	primaryKeys: {
 		partition: 'clientId',
-		sort: 'topic'
+		sort: 'id'
 	},
 	indexes: {
 		topic: {
@@ -50,6 +50,9 @@ module.exports = class Queries extends Crud {
 						AttributeName: 'clientId',
 						AttributeType: 'S'
 					}, {
+						AttributeName: 'id',
+						AttributeType: 'S'
+					}, {
 						AttributeName: 'topic',
 						AttributeType: 'S'
 					}],
@@ -57,7 +60,7 @@ module.exports = class Queries extends Crud {
 						AttributeName: 'clientId',
 						KeyType: 'HASH'
 					}, {
-						AttributeName: 'topic',
+						AttributeName: 'id',
 						KeyType: 'RANGE'
 					}],
 					GlobalSecondaryIndexes: [{

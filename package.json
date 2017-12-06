@@ -7,6 +7,7 @@
     "aws-sdk": "^2.162.0",
     "graphql": "^0.11.7",
     "lodash": "^4.17.4",
+    "md5": "^2.2.1",
     "rxjs": "^5.5.2",
     "smallorange-beauty-error": "^1.0.3",
     "smallorange-dynamodb-client": "^1.1.5"

@@ -60,8 +60,6 @@ exports.handler = (event, context, callback) => {
 		payload,
 		topic
 	} = event;
-	
-	// console.log(JSON.stringify(event, null, 2));
 
 	let operation;
 
@@ -80,11 +78,13 @@ exports.handler = (event, context, callback) => {
 	operation.subscribe(
 		response => {
 			console.log(JSON.stringify(response, null, 2));
+
 			callback(null, response);
 		},
 		err => {
-			console.log(beautyError(err));
-			callback(err);
+			console.log(JSON.stringify(err.context ? err : beautyError(err), null, 2));
+
+			callback(null, null);
 		}
 	);
 };
