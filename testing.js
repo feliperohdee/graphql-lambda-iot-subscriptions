@@ -31,6 +31,11 @@ const schema = exports.schema = new GraphQLSchema({
 				type: Message,
 				// args: {},
 				resolve: root => root
+			},
+			onChange: {
+				type: Message,
+				// args: {},
+				resolve: root => root
 			}
 		}
 	})
@@ -40,12 +45,14 @@ const events = exports.events = {
 	onMessage: {
 		inbound: (clientId, queryObj, payload) => {
 			return [
-				'subscriptions/inbound/messages'
+				'subscriptions/inbound/messages',
+				'subscriptions/inbound/anotherMessages',
 			];
 		},
 		outbound: (clientId, queryObj, payload) => {
 			return [
-				clientId
+				clientId,
+				'another'
 			];
 		}
 	}

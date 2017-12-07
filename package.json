@@ -13,7 +13,8 @@
     "smallorange-dynamodb-client": "^1.1.5"
   },
   "scripts": {
-    "test": "./node_modules/.bin/_mocha **.spec.js --recursive --watch --timeout 5000",
+    "test": "./node_modules/.bin/_mocha **.spec.js --watch",
+    "testOnce": "./node_modules/.bin/_mocha **.spec.js",
     "clean": "rm -rf lambda.zip",
     "zip": "zip -9 -r lambda.zip .",
     "s3": "aws s3 cp lambda.zip s3://lambdas.smallorange.co/graphqlSubscriptions/lambda.zip",

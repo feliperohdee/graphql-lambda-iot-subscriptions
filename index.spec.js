@@ -6,7 +6,11 @@ const _ = require('lodash');
 const chai = require('chai');
 const sinon = require('sinon');
 const sinonChai = require('sinon-chai');
+const md5 = require('md5');
 const beautyError = require('smallorange-beauty-error');
+const {
+	Request
+} = require('smallorange-dynamodb-client');
 const {
 	Observable
 } = require('rxjs');
@@ -319,7 +323,13 @@ describe('index.js', () => {
 					})
 					.subscribe(null, err => {
 						expect(err.message).to.equal('retryable error');
-						expect(err.context).to.be.an('object');
+						expect(err.context).to.deep.equal({
+							scope: 'publish',
+							topic: 'topic',
+							payload: {
+								payload: 'payload'
+							}
+						});
 						done();
 					});
 			});
@@ -327,54 +337,717 @@ describe('index.js', () => {
 	});
 
 	describe('onDisconnect', () => {
-		it('should do nothing if no clientId');
-		it('should call queries.clear');
-		it('should return');
+		beforeEach(() => {
+			sinon.stub(subscriptions.queries, 'clear')
+				.returns(Observable.of({}));
+		});
+
+		afterEach(() => {
+			subscriptions.queries.clear.restore();
+		});
+
+		it('should do nothing if no clientId', done => {
+			const callback = sinon.stub();
+
+			subscriptions.onDisconnect('topic', {})
+				.subscribe(callback, null, () => {
+					expect(callback).not.to.have.been.called;
+					done();
+				});
+		});
+
+		it('should call queries.clear', done => {
+			subscriptions.onDisconnect('topic', {})
+				.subscribe(() => {
+					expect(subscriptions.queries.clear).to.have.been.calledWithExactly({
+						clientId: 'clientId'
+					});
+				}, null, done);
+		});
+
+		it('should return', done => {
+			subscriptions.onDisconnect('topic', {})
+				.subscribe(response => {
+					expect(response).to.deep.equal({
+						clientId: 'clientId'
+					});
+				}, null, done);
+		});
 
 		describe('error', () => {
-			it('should retry times if retryable');
-			it('should throw beautified error');
+			let callback;
+
+			beforeEach(() => {
+				callback = sinon.stub();
+
+				subscriptions.queries.clear.restore();
+				sinon.stub(subscriptions.queries, 'clear')
+					.callsFake(() => {
+						const err = new Error('retryable error');
+
+						err.retryable = true;
+						err.retryDelay = 1;
+
+						return Observable.throw(err)
+							.do(null, err => {
+								callback(err);
+							});
+					});
+			});
+
+			it('should retry times if retryable', done => {
+				subscriptions.onDisconnect('topic', {
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						expect(callback).to.have.callCount(6);
+						done();
+					});
+			});
+
+			it('should throw beautified error', done => {
+				subscriptions.onDisconnect('topic', {
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						expect(err.message).to.equal('retryable error');
+						expect(err.context).to.deep.equal({
+							scope: 'onDisconnect',
+							clientId: 'clientId'
+						});
+						done();
+					});
+			});
+
 		});
 	});
 
 	describe('onSubscribe', () => {
-		it('should do nothing if no clientId');
-		it('should call queries.insertOrUpdate');
-		it('should return');
-		it('should not duplicate query to same client');
-		it('should return empty if no matched query');
+		let queryObject;
+
+		beforeEach(() => {
+			queryObject = {
+				contextValue: {
+					contextValue: 'contextValue'
+				},
+				requestString: `subscription {
+					onMessage {
+						text
+					}
+				}`,
+				variableValues: {
+					variableValues: 'variableValues'
+				}
+			};
+
+			sinon.spy(testing.events.onMessage, 'inbound');
+			sinon.spy(subscriptions, 'graphqlValidate');
+			sinon.stub(subscriptions, 'publish')
+				.returns(Observable.of({}));
+			sinon.stub(subscriptions.queries, 'insertOrUpdate')
+				.returns(Observable.of({}));
+
+		});
+
+		afterEach(() => {
+			testing.events.onMessage.inbound.restore();
+			subscriptions.graphqlValidate.restore();
+			subscriptions.publish.restore();
+			subscriptions.queries.insertOrUpdate.restore();
+		});
+
+		it('should do nothing if no clientId', done => {
+			const callback = sinon.stub();
+
+			subscriptions.onSubscribe('topic', {})
+				.subscribe(callback, null, () => {
+					expect(callback).not.to.have.been.called;
+					done();
+				});
+		});
+
+		it('should call query.inbound', done => {
+			subscriptions.onSubscribe('topic', {
+					...queryObject,
+					clientId: 'clientId',
+					payload: {
+						payload: 'payload'
+					}
+				})
+				.subscribe(() => {
+					expect(testing.events.onMessage.inbound).to.have.been.calledWithExactly('clientId', {
+						contextValue: queryObject.contextValue,
+						queryName: 'onMessage',
+						requestString: queryObject.requestString,
+						variableValues: queryObject.variableValues
+					}, {
+						payload: {
+							payload: 'payload'
+						}
+					});
+				}, null, done);
+		});
+
+		it('should call queries.insertOrUpdate', done => {
+			const queryString = JSON.stringify({
+				contextValue: queryObject.contextValue,
+				queryName: 'onMessage',
+				requestString: queryObject.requestString,
+				variableValues: queryObject.variableValues
+			});
+
+			const id1 = md5('subscriptions/inbound/messages' + queryString);
+			const id2 = md5('subscriptions/inbound/anotherMessages' + queryString);
+
+			subscriptions.onSubscribe('topic', {
+					...queryObject,
+					clientId: 'clientId'
+				})
+				.subscribe(() => {
+					expect(subscriptions.queries.insertOrUpdate).to.have.been.calledTwice;
+
+					const [args] = subscriptions.queries.insertOrUpdate.firstCall.args;
+
+					expect(subscriptions.queries.insertOrUpdate).to.have.been.calledWithExactly({
+						clientId: 'clientId',
+						id: id1,
+						query: queryString,
+						topic: 'subscriptions/inbound/messages',
+						ttl: args.ttl
+					});
+
+					expect(subscriptions.queries.insertOrUpdate).to.have.been.calledWithExactly({
+						clientId: 'clientId',
+						id: id2,
+						query: queryString,
+						topic: 'subscriptions/inbound/anotherMessages',
+						ttl: args.ttl
+					});
+				}, null, done);
+		});
+
+		it('should return', done => {
+			subscriptions.onSubscribe('topic', {
+					...queryObject,
+					clientId: 'clientId'
+				})
+				.subscribe(response => {
+					expect(response).to.deep.equal([{
+						onSubscribe: {
+							clientId: 'clientId',
+							id: '06ca32ad633a6ad2f83070502c5a040c',
+							requestString: 'subscription {\n\t\t\t\t\tonMessage {\n\t\t\t\t\t\ttext\n\t\t\t\t\t}\n\t\t\t\t}',
+							topic: 'subscriptions/inbound/messages'
+						}
+					}, {
+						onSubscribe: {
+							clientId: 'clientId',
+							id: '7da8e4de7002bc982b9659c2d5bb57e7',
+							requestString: 'subscription {\n\t\t\t\t\tonMessage {\n\t\t\t\t\t\ttext\n\t\t\t\t\t}\n\t\t\t\t}',
+							topic: 'subscriptions/inbound/anotherMessages'
+						}
+					}]);
+				}, null, done);
+		});
+
+		it('should not duplicate query to same client', done => {
+			Observable.forkJoin(
+					subscriptions.onSubscribe('topic', {
+						...queryObject,
+						clientId: 'clientId'
+					}),
+					subscriptions.onSubscribe('topic', {
+						...queryObject,
+						clientId: 'clientId'
+					})
+				)
+				.subscribe(([
+					subscribe1,
+					subscribe2
+				]) => {
+					expect(subscribe1[0].onSubscribe.clientId).to.equal(subscribe2[0].onSubscribe.clientId);
+					expect(subscribe1[0].onSubscribe.id).be.a('string');
+					expect(subscribe2[0].onSubscribe.id).be.a('string');
+					expect(subscribe1[0].onSubscribe.id).to.equal(subscribe2[0].onSubscribe.id);
+
+					expect(subscribe1[1].onSubscribe.clientId).to.equal(subscribe2[1].onSubscribe.clientId);
+					expect(subscribe1[1].onSubscribe.id).be.a('string');
+					expect(subscribe2[1].onSubscribe.id).be.a('string');
+					expect(subscribe1[1].onSubscribe.id).to.equal(subscribe2[1].onSubscribe.id);
+				}, null, done);
+		});
+
+		it('should return empty if no matched query', done => {
+			queryObject.requestString = `subscription {
+				onChange {
+					text
+				}
+			}`;
+
+			subscriptions.onSubscribe('topic', {
+					...queryObject,
+					clientId: 'clientId'
+				})
+				.subscribe(response => {
+					expect(response.length).to.equal(0);
+				}, null, done);
+		});
 
 		describe('no requestString', () => {
-			it('should send error to client');
-			it('should throw');
+			it('should send error to client', done => {
+				queryObject.requestString = null;
+
+				subscriptions.onSubscribe('topic', {
+						...queryObject,
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						const args = subscriptions.publish.firstCall.args;
+
+						expect(subscriptions.publish).to.have.been.calledWithExactly('clientId', {
+							errors: args[1].errors
+						});
+						done();
+					});
+			});
+
+			it('should throw beautified error', done => {
+				queryObject.requestString = null;
+
+				subscriptions.onSubscribe('topic', {
+						...queryObject,
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						expect(err.message).to.equal('no requestString provided.');
+						expect(err.context).to.deep.equal({
+							scope: 'onSubscribe',
+							clientId: 'clientId'
+						});
+						done();
+					});
+			});
 		});
 
 		describe('validation', () => {
-			it('should call graphqlValidate');
-			it('should send invalidations to client');
-			it('should not send invalidations to client if no mqtt');
-			it('should throw');
+			it('should call graphqlValidate', done => {
+				subscriptions.onSubscribe('topic', {
+						...queryObject,
+						clientId: 'clientId'
+					})
+					.subscribe(() => {
+						expect(subscriptions.graphqlValidate).to.have.been.calledWithExactly(queryObject.requestString);
+					}, null, done);
+			});
+
+			it('should send invalidations to client', done => {
+				queryObject.requestString = `subscription {
+					onMessage {
+						texts
+					}
+				}`;
+
+				subscriptions.onSubscribe('topic', {
+						...queryObject,
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						const args = subscriptions.publish.firstCall.args;
+
+						expect(subscriptions.publish).to.have.been.calledWithExactly('clientId', {
+							errors: args[1].errors
+						});
+						expect(args[1].errors[0].message).to.equal('Cannot query field "texts" on type "Message". Did you mean "text"?');
+
+						done();
+					});
+			});
+
+			it('should not send invalidations to client if no mqtt', done => {
+				queryObject.requestString = `subscription {
+					onMessage {
+						texts
+					}
+				}`;
+
+				subscriptions.onSubscribe(null, {
+						...queryObject,
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						expect(subscriptions.publish).not.to.have.been.called;
+
+						done();
+					});
+			});
+
+			it('should throw beautified error', done => {
+				queryObject.requestString = `subscription {
+					onMessage {
+						texts
+					}
+				}`;
+
+				subscriptions.onSubscribe(null, {
+						...queryObject,
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						expect(err.message).to.equal('invalid requestString.');
+						expect(err.context).to.have.all.keys([
+							'scope',
+							'clientId',
+							'contextValue',
+							'errors',
+							'requestString',
+							'variableValues'
+						]);
+						expect(err.context.scope).to.equal('onSubscribe');
+
+						done();
+					});
+			});
 		});
 
-		describe('error', () => {
-			it('should retry times if retryable');
-			it('should throw beautified error');
+		describe('insertOrUpdate error', () => {
+			let callback;
+
+			beforeEach(() => {
+				callback = sinon.stub();
+
+				subscriptions.queries.insertOrUpdate.restore();
+				sinon.stub(subscriptions.queries, 'insertOrUpdate')
+					.callsFake(() => {
+						const err = new Error('retryable error');
+
+						err.retryable = true;
+						err.retryDelay = 1;
+
+						return Observable.throw(err)
+							.do(null, err => {
+								callback(err);
+							});
+					});
+			});
+
+			it('should retry times if retryable', done => {
+				subscriptions.onSubscribe('topic', {
+						...queryObject,
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						expect(callback).to.have.callCount(11);
+						done();
+					});
+			});
+
+			it('should throw beautified error', done => {
+				subscriptions.onSubscribe('topic', {
+						...queryObject,
+						clientId: 'clientId'
+					})
+					.subscribe(null, err => {
+						expect(err.message).to.equal('retryable error');
+						expect(err.context).to.have.all.keys([
+							'scope',
+							'clientId',
+							'contextValue',
+							'errors',
+							'id',
+							'requestString',
+							'variableValues',
+							'topic'
+						]);
+						expect(err.context.scope).to.equal('onSubscribe.insert');
+						done();
+					});
+			});
 		});
 	});
 
 	describe('onInbound', () => {
-		it('should call queries.query');
-		it('should call graphQlExecute');
-		it('should publish to each client each outbound topic');
-		it('should return');
+		let queryObject;
 
-		describe('publish error', () => {
-			it('should suppress errors to avoid break the chain');
+		beforeEach(() => {
+			queryObject = {
+				contextValue: {
+					contextValue: 'contextValue'
+				},
+				requestString: `subscription {
+					onMessage {
+						text
+					}
+				}`,
+				queryName: 'onMessage',
+				variableValues: {
+					variableValues: 'variableValues'
+				}
+			};
+
+			sinon.stub(Request.prototype, 'query')
+				.returns(Observable.of({
+					clientId: 'clientId',
+					query: JSON.stringify(queryObject)
+				}, {
+					clientId: 'clientId',
+					query: JSON.stringify(queryObject)
+				}, {
+					clientId: 'clientId',
+					query: JSON.stringify(queryObject)
+				}, {
+					clientId: 'clientId',
+					query: JSON.stringify({
+						...queryObject,
+						queryName: 'inexistent'
+					})
+				}));
+
+			sinon.stub(subscriptions, 'publish')
+				.callsFake((topic, payload) => Observable.of({
+					publish: {
+						topic,
+						payload
+					}
+				}));
+
+			sinon.spy(testing.events.onMessage, 'outbound');
+			sinon.spy(subscriptions, 'graphqlExecute');
 		});
 
-		describe('error', () => {
-			it('should retry times if retryable');
-			it('should throw beautified error');
+		afterEach(() => {
+			Request.prototype.query.restore();
+			testing.events.onMessage.outbound.restore();
+			subscriptions.graphqlExecute.restore();
+		});
+
+		it('should call queries.query', done => {
+			subscriptions.onInbound('topic', {
+					text: 'text'
+				})
+				.subscribe(null, null, () => {
+					expect(Request.prototype.query).to.have.been.calledWithExactly('#topic = :topic');
+					done();
+				});
+		});
+
+		it('should call graphQlExecute', done => {
+			subscriptions.onInbound('topic', {
+					text: 'text'
+				})
+				.subscribe(null, null, () => {
+					expect(subscriptions.graphqlExecute).to.have.been.calledThrice;
+					expect(subscriptions.graphqlExecute).to.have.been.calledWithExactly({
+						...queryObject,
+						rootValue: {
+							text: 'text'
+						}
+					});
+					done();
+				});
+		});
+
+		it('should call query.outbound', done => {
+			subscriptions.onInbound('topic', {
+					text: 'text'
+				})
+				.subscribe(null, null, () => {
+					expect(testing.events.onMessage.outbound).to.have.been.calledThrice;
+					expect(testing.events.onMessage.outbound).to.have.been.calledWithExactly('clientId', queryObject, {
+						text: 'text'
+					});
+					done();
+				});
+		});
+
+		it('should publish to each client each outbound topic', done => {
+			subscriptions.onInbound('topic', {
+					text: 'text'
+				})
+				.subscribe(null, null, () => {
+					expect(subscriptions.publish).to.have.callCount(6);
+					expect(subscriptions.publish).to.have.been.calledWithExactly('clientId', {
+						data: {
+							onMessage: {
+								text: 'text'
+							}
+						}
+					});
+					expect(subscriptions.publish).to.have.been.calledWithExactly('another', {
+						data: {
+							onMessage: {
+								text: 'text'
+							}
+						}
+					});
+					done();
+				});
+		});
+
+		it('should return', done => {
+			subscriptions.onInbound('topic', {
+					text: 'text'
+				})
+				.toArray()
+				.subscribe(response => {
+					expect(response).to.deep.equal([
+						[],
+						[{
+							publish: {
+								payload: {
+									data: {
+										onMessage: {
+											text: 'text'
+										}
+									}
+								},
+								topic: 'clientId'
+							}
+						}, {
+							publish: {
+								payload: {
+									data: {
+										onMessage: {
+											text: 'text'
+										}
+									}
+								},
+								topic: 'another'
+							}
+						}],
+						[{
+							publish: {
+								payload: {
+									data: {
+										onMessage: {
+											text: 'text'
+										}
+									}
+								},
+								topic: 'clientId'
+							}
+						}, {
+							publish: {
+								payload: {
+									data: {
+										onMessage: {
+											text: 'text'
+										}
+									}
+								},
+								topic: 'another'
+							}
+						}],
+						[{
+							publish: {
+								payload: {
+									data: {
+										onMessage: {
+											text: 'text'
+										}
+									}
+								},
+								topic: 'clientId'
+							}
+						}, {
+							publish: {
+								payload: {
+									data: {
+										onMessage: {
+											text: 'text'
+										}
+									}
+								},
+								topic: 'another'
+							}
+						}]
+					]);
+				}, null, done);
+		});
+
+		describe('query error', () => {
+			let callback;
+
+			beforeEach(() => {
+				callback = sinon.stub();
+
+				Request.prototype.query.restore();
+				sinon.stub(Request.prototype, 'query')
+					.callsFake(() => {
+						const err = new Error('retryable error');
+
+
+						err.retryable = true;
+						err.retryDelay = 10;
+
+						return Observable.throw(err)
+							.do(null, err => {
+								callback(err);
+							});
+					});
+			});
+
+			it('should retry times if retryable', done => {
+				subscriptions.onInbound('topic', {
+						text: 'text'
+					})
+					.subscribe(null, err => {
+						expect(callback).to.have.callCount(6);
+						done();
+					});
+			});
+
+			it('should throw beautified error', done => {
+				subscriptions.onInbound('topic', {
+						text: 'text'
+					})
+					.subscribe(null, err => {
+						expect(err.message).to.equal('retryable error');
+						expect(err.context).to.have.all.keys([
+							'scope',
+							'topic'
+						]);
+						expect(err.context.scope).to.equal('onInbound.fetchTopics');
+
+						done();
+					});
+			});
+		});
+
+		describe('publish error', () => {
+			beforeEach(() => {
+				subscriptions.publish.restore();
+				sinon.stub(subscriptions, 'publish')
+					.onFirstCall()
+					.returns(Observable.throw(new Error('error')))
+					.callsFake((topic, payload) => Observable.of({
+						publish: {
+							topic,
+							payload
+						}
+					}));
+			});
+
+			it('should suppress errors to avoid break the chain', done => {
+				subscriptions.onInbound('topic', {
+						text: 'text'
+					})
+					.toArray()
+					.subscribe(response => {
+						expect(response[1][0].message).to.equal('error');
+						expect(response[1][1]).to.deep.equal({
+							publish: {
+								topic: 'another',
+								payload: {
+									data: {
+										onMessage: {
+											text: 'text'
+										}
+									}
+								}
+							}
+						});
+					}, null, done);
+			});
 		});
 	});
 });

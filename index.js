@@ -173,10 +173,9 @@ module.exports = class Subscriptions {
 						beautyError('no requestString provided.')
 					]
 				})
-				.mergeMap(() => Observable.throw(beautyError('no requestString provided', {
+				.mergeMap(() => Observable.throw(beautyError('no requestString provided.', {
 					scope: 'onSubscribe',
-					clientId,
-					errors
+					clientId
 				})));
 		}
 
@@ -185,12 +184,12 @@ module.exports = class Subscriptions {
 			queryName
 		} = this.graphqlValidate(requestString);
 
-		if (errors.length) {
+		if (errors && errors.length) {
 			isMqtt && this.publish(clientId, {
 				errors
 			});
 
-			return Observable.throw(beautyError('invalid requestString', {
+			return Observable.throw(beautyError('invalid requestString.', {
 				scope: 'onSubscribe',
 				clientId,
 				contextValue,
@@ -210,12 +209,13 @@ module.exports = class Subscriptions {
 		const query = this.events[queryName];
 		const inbound = query && query.inbound(clientId, queryObj, nonQueryPayload);
 
-		if (inbound.length) {
+		if (inbound && inbound.length) {
 			const queryString = JSON.stringify(queryObj);
-			const id = md5(queryString);
 
 			return Observable.from(inbound)
 				.mergeMap(topic => {
+					const id = md5(topic + queryString);
+
 					return this.queries.insertOrUpdate({
 							clientId,
 							id,
@@ -276,9 +276,10 @@ module.exports = class Subscriptions {
 			query
 		}) => {
 			const queryObj = JSON.parse(query);
-			const outbound = this.events[queryObj.queryName].outbound(clientId, queryObj, payload);
+			const events = this.events[queryObj.queryName];
+			const outbound = events && events.outbound(clientId, queryObj, payload);
 
-			if (outbound.length) {
+			if (outbound && outbound.length) {
 				return this.graphqlExecute(_.extend({}, queryObj, {
 						rootValue: payload
 					}))
@@ -295,5 +296,9 @@ module.exports = class Subscriptions {
 
 			return Observable.of([]);
 		});
+	}
+
+	getTopics() {
+
 	}
 }
