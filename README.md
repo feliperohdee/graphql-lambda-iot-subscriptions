@@ -76,11 +76,6 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 					type: Message,
 					// args: {},
 					resolve: root => root
-				},
-				onChange: {
-					type: Message,
-					// args: {},
-					resolve: root => root
 				}
 			}
 		})
