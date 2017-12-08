@@ -94,7 +94,7 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 					'subscriptions/inbound/anotherMessages'
 				];
 			},
-			// what topics should results be delivered, you can create custom rules accordin to user authentication, ...
+			// what topics should results be delivered, you can create custom rules according to user authentication, ...
 			outbound: (clientId, queryObj, payload) => {
 				return [
 					clientId
