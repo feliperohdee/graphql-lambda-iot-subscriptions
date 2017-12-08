@@ -58,7 +58,6 @@ const events = exports.events = {
 	}
 };
 
-
 exports.handler = (event, context, callback) => {
 	if (event.type === 'mqttIncoming') {
 		const subscriptions = new Subscriptions(events, schema);
