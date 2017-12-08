@@ -131,17 +131,17 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 
 ## 3. Almost Done
 
-In security credentials, register an user who have full access to DynamoDb*.
+In security credentials, register an user who have full access to DynamoDb**.
 In your lambda setup, register the following environment variables:
 
-* Lambda function needs access to DynamoDb, where it register subscriptions. You can define via Access Role or via user.
+** Lambda function needs access to DynamoDb, where it register subscriptions. You can define via Access Role or via user.
 
 - IOT_ENDPOINT: (required, available on Aws Iot console > settings)
 - SECRET_ACCESS_KEY: *** (optional)
 - ACCESS_KEY_ID: *** (optional)
 - AWS_REGION: *** (optional, default us-east-1)
 
-Now, each time AWS Iot receives one message a pre defined topics "onSubscribe", "onInbound" and "onDisconnect", it will route messages to this lambda function. The lambda function is gonna take care to register subscriptions on "onSubscribe", run queries "onInbound" and tear down on "onDisconnect".
+Now, each time AWS Iot receives a message at pre defined topics "onSubscribe", "onInbound" and "onDisconnect", it will route messages to this lambda function. The lambda function is gonna take care to register subscriptions on "onSubscribe", run queries "onInbound" and tear down queries on "onDisconnect".
 
 Optionally you can define a TTL rule on DynamoDB to remove old queries in case of "onDisconnect" fails for any reason.
 You can see the logs via Cloud Watch Logs.
