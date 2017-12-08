@@ -172,17 +172,17 @@ Once you define the way your client will connect to Aws Iot Hub (http://docs.aws
 
 then, you connect you models (or any other layer, device or client) to trigger events with their respective payloads on Aws Iot Hub. For this case you can use Aws IotData SDK (http://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/IotData.html) or Aws Iot Device SDK (https://github.com/aws/aws-iot-device-sdk-js), like the pesudo-code below:
 
-class MessageModel {
-	insertMessage(args) {
-		return this.insert({...messagePayload})
-			.then(response => {
-				// the payload sent to this topic, will trigger lambda function through "onInbound" Aws Iot Rules, execute registered queries via inbound topics, and send to respective, pre registered, outbound topics.
-				iotInstance.publish('subscriptions/inbound/messages', response);
+	class MessageModel {
+		insertMessage(args) {
+			return this.insert({...messagePayload})
+				.then(response => {
+					// the payload sent to this topic, will trigger lambda function through "onInbound" Aws Iot Rules, execute registered queries via inbound topics, and send to respective, pre registered, outbound topics.
+					iotInstance.publish('subscriptions/inbound/messages', response);
 
-				return response;
-			});
+					return response;
+				});
+		}
 	}
-}
 
 Enjoy!
 
