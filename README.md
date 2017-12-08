@@ -2,6 +2,11 @@
 
 # Small Orange Lambda/Iot GraphQL Subscriptions 
 
+## Install
+
+	yarn add smallorange-lambda-iot-graphql-subscriptions
+	npm i smallorange-lambda-iot-graphql-subscriptions --save
+
 ## API
 	constructor(
 		events: {
