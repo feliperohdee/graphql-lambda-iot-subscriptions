@@ -74,7 +74,6 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 			fields: {
 				onMessage: {
 					type: Message,
-					// args: {},
 					resolve: root => root
 				}
 			}
