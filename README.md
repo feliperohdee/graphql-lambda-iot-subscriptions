@@ -82,7 +82,7 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 
 	const events = {
 		onMessage: {
-			// what topic shoul trigger onMessage queries
+			// what topic should trigger onMessage queries
 			inbound: (clientId, queryObj, payload) => {
 				return [
 					'subscriptions/inbound/messages',
