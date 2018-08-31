@@ -48,6 +48,7 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 
 ## 2. Create Lambda Function
 
+	const graphql = require('graphql');
 	const {
 		GraphQLSchema,
 		GraphQLObjectType,
@@ -105,7 +106,7 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 
 	exports.handler = (event, context, callback) => {
 		if (event.type === 'mqttIncoming') {
-			const subscriptions = new Subscriptions(events, schema);
+			const subscriptions = new Subscriptions(events, schema, graphql);
 			const {
 				payload,
 				topic
