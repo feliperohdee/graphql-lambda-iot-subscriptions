@@ -1,304 +1,308 @@
 const _ = require('lodash');
 const md5 = require('md5');
 const AWS = require('./AWS');
-const graphql = require('./graphql');
+const graphqlFactory = require('./graphql');
 const beautyError = require('smallorange-beauty-error');
 const {
-	Queries
+    Queries
 } = require('./models');
 const {
-	Observable
+    Observable
 } = require('rxjs');
 const {
-	DynamoDB
+    DynamoDB
 } = require('smallorange-dynamodb-client');
 
 Observable.prototype.onRetryableError = function(callback = {}) {
-	const source = this;
+    const source = this;
 
-	return source.retryWhen(err => err.mergeMap((err, index) => {
-		let error = _.isFunction(callback) ? callback(err, index) : callback;
+    return source.retryWhen(err => err.mergeMap((err, index) => {
+        let error = _.isFunction(callback) ? callback(err, index) : callback;
 
-		if (_.isNumber(error)) {
-			error = {
-				max: error
-			};
-		}
+        if (_.isNumber(error)) {
+            error = {
+                max: error
+            };
+        }
 
-		error = _.defaults({}, error, {
-			retryable: !_.isUndefined(err.retryable) ? err.retryable : false,
-			delay: !_.isUndefined(err.retryDelay) ? err.retryDelay : 1000,
-			max: 1
-		});
+        error = _.defaults({}, error, {
+            retryable: !_.isUndefined(err.retryable) ? err.retryable : false,
+            delay: !_.isUndefined(err.retryDelay) ? err.retryDelay : 1000,
+            max: 1
+        });
 
-		if (error && error.retryable && index < error.max) {
-			return Observable.of(err)
-				.delay(error.delay);
-		}
+        if (error && error.retryable && index < error.max) {
+            return Observable.of(err)
+                .delay(error.delay);
+        }
 
-		return Observable.throw(err);
-	}));
+        return Observable.throw(err);
+    }));
 };
 
 module.exports = class Subscriptions {
-	constructor(events, schema, topics, tableName = 'graphqlSubscriptionQueries') {
-		if(!events) {
-			throw new Error('events is required.');
-		}
+    constructor(events, schema, graphql, topics, tableName = 'graphqlSubscriptionQueries') {
+        if (!events) {
+            throw new Error('events is required.');
+        }
 
-		if(!schema) {
-			throw new Error('schema is required.');
-		}
+        if (!schema) {
+            throw new Error('schema is required.');
+        }
 
-		this.events = events;
-		this.schema = schema;
-		this.topics = _.defaults(topics, {
-			inbound: 'subscriptions/inbound',
-			subscribe: 'subscriptions/subscribe',
-			disconnect: '$aws/events/presence/disconnected'
-		});
+        if (!graphql) {
+            throw new Error('graphql is required.');
+        }
 
-		this.dynamoDb = new DynamoDB({
-			client: AWS.dynamoDb
-		});
+        this.events = events;
+        this.schema = schema;
+        this.topics = _.defaults(topics, {
+            inbound: 'subscriptions/inbound',
+            subscribe: 'subscriptions/subscribe',
+            disconnect: '$aws/events/presence/disconnected'
+        });
+        this.graphql = graphqlFactory(graphql, schema);
 
-		this.queries = new Queries(this, tableName);
-		this.iotPublish = Observable.bindNodeCallback(AWS.iot.publish.bind(AWS.iot));
-	}
+        this.dynamoDb = new DynamoDB({
+            client: AWS.dynamoDb
+        });
 
-	graphqlExecute(args) {
-		const {
-			requestString = null,
-			rootValue = {},
-			contextValue = {},
-			variableValues = {}
-		} = args;
+        this.queries = new Queries(this, tableName);
+        this.iotPublish = Observable.bindNodeCallback(AWS.iot.publish.bind(AWS.iot));
+    }
 
-		return Observable.fromPromise(graphql.execute(this.schema, requestString, rootValue, _.extend({}, this, contextValue), variableValues));
-	}
+    graphqlExecute(args) {
+        const result = this.graphql.execute(args);
 
-	graphqlValidate(requestString) {
-		return graphql.validate(this.schema, requestString);
-	}
+        if (result.then) {
+            return Observable.fromPromise(result);
+        }
 
-	handle(topic, payload) {
-		let operation = Observable.empty();
+        return Observable.of(result);
+    }
 
-		if (_.startsWith(topic, this.topics.inbound)) {
-			operation = this.onInbound(topic, payload);
-		} else if (_.startsWith(topic, this.topics.subscribe)) {
-			operation = this.onSubscribe(topic, payload);
-		} else if (_.startsWith(topic, this.topics.disconnect)) {
-			operation = this.onDisconnect(topic, payload);
-		}
+    graphqlValidate(source) {
+        return this.graphql.validate(source);
+    }
 
-		return operation.catch(err => Observable.throw(err.context ? err : beautyError(err)));
-	}
+    handle(topic, payload) {
+        let operation = Observable.empty();
 
-	publish(topic, payload) {
-		return this.iotPublish({
-				topic,
-				payload: _.isString(payload) ? payload : JSON.stringify(payload),
-				qos: 1
-			})
-			.mapTo({
-				publish: {
-					topic,
-					payload
-				}
-			})
-			.onRetryableError(err => ({
-				retryable: err.retryable,
-				delay: err.retryDelay,
-				max: 5
-			}))
-			.catch(err => Observable.throw(beautyError(err, {
-				scope: 'publish',
-				topic,
-				payload
-			})));
-	}
+        if (_.startsWith(topic, this.topics.inbound)) {
+            operation = this.onInbound(topic, payload);
+        } else if (_.startsWith(topic, this.topics.subscribe)) {
+            operation = this.onSubscribe(topic, payload);
+        } else if (_.startsWith(topic, this.topics.disconnect)) {
+            operation = this.onDisconnect(topic, payload);
+        }
 
-	onDisconnect(topic, payload) {
-		const {
-			clientId = null
-		} = payload;
+        return operation.catch(err => Observable.throw(err.context ? err : beautyError(err)));
+    }
 
-		if (!clientId) {
-			return Observable.empty();
-		}
+    publish(topic, payload) {
+        return this.iotPublish({
+                topic,
+                payload: _.isString(payload) ? payload : JSON.stringify(payload),
+                qos: 1
+            })
+            .mapTo({
+                publish: {
+                    topic,
+                    payload
+                }
+            })
+            .onRetryableError(err => ({
+                retryable: err.retryable,
+                delay: err.retryDelay,
+                max: 5
+            }))
+            .catch(err => Observable.throw(beautyError(err, {
+                scope: 'publish',
+                topic,
+                payload
+            })));
+    }
 
-		return this.queries.clear({
-				clientId
-			})
-			.mapTo({
-				onDisconnect: {
-					clientId
-				}
-			})
-			.onRetryableError(err => ({
-				retryable: err.retryable,
-				delay: err.retryDelay,
-				max: 5
-			}))
-			.catch(err => Observable.throw(beautyError(err, {
-				scope: 'onDisconnect',
-				clientId
-			})));
-	}
+    onDisconnect(topic, payload) {
+        const {
+            clientId = null
+        } = payload;
 
-	onSubscribe(topic, payload) {
-		const {
-			clientId = null,
-			contextValue = {},
-			requestString = null,
-			variableValues = {}
-		} = payload;
-		
-		const isMqtt = !!topic;
-		const nonQueryPayload = _.omit(payload, [
-			'clientId',
-			'contextValue',
-			'requestString',
-			'variableValues'
-		]);
+        if (!clientId) {
+            return Observable.empty();
+        }
 
-		if (!clientId) {
-			return Observable.empty();
-		}
+        return this.queries.clear({
+                clientId
+            })
+            .mapTo({
+                onDisconnect: {
+                    clientId
+                }
+            })
+            .onRetryableError(err => ({
+                retryable: err.retryable,
+                delay: err.retryDelay,
+                max: 5
+            }))
+            .catch(err => Observable.throw(beautyError(err, {
+                scope: 'onDisconnect',
+                clientId
+            })));
+    }
 
-		if (!requestString) {
-			return this.publish(clientId, {
-					errors: [
-						beautyError('no requestString provided.')
-					]
-				})
-				.mergeMap(() => Observable.throw(beautyError('no requestString provided.', {
-					scope: 'onSubscribe',
-					clientId
-				})));
-		}
+    onSubscribe(topic, payload) {
+        const {
+            clientId = null,
+                contextValue = {},
+                source = null,
+                variableValues = {}
+        } = payload;
 
-		const {
-			errors,
-			queryName
-		} = this.graphqlValidate(requestString);
+        const isMqtt = !!topic;
+        const exclusivePayload = _.omit(payload, [
+            'clientId',
+            'contextValue',
+            'source',
+            'variableValues'
+        ]);
 
-		if (errors && errors.length) {
-			isMqtt && this.publish(clientId, {
-				errors
-			});
+        if (!clientId) {
+            return Observable.empty();
+        }
 
-			return Observable.throw(beautyError('invalid requestString.', {
-				scope: 'onSubscribe',
-				clientId,
-				contextValue,
-				errors,
-				requestString,
-				variableValues
-			}));
-		}
+        if (!source) {
+            return this.publish(clientId, {
+                    errors: [
+                        beautyError('no source provided.')
+                    ]
+                })
+                .mergeMap(() => Observable.throw(beautyError('no source provided.', {
+                    scope: 'onSubscribe',
+                    clientId
+                })));
+        }
 
-		const queryObj = {
-			contextValue,
-			queryName,
-			requestString,
-			variableValues
-		};
+        const validation = this.graphqlValidate(source);
 
-		const query = this.events[queryName];
-		const inbound = query && query.inbound(clientId, queryObj, nonQueryPayload);
+        if (validation.errors && validation.errors.length) {
+            isMqtt && this.publish(clientId, {
+                errors: validation.errors
+            });
 
-		if (inbound && inbound.length) {
-			const queryString = JSON.stringify(queryObj);
+            return Observable.throw(beautyError('invalid source.', {
+                scope: 'onSubscribe',
+                clientId,
+                contextValue,
+                errors: validation.errors,
+                source,
+                variableValues
+            }));
+        }
 
-			return Observable.from(inbound)
-				.mergeMap(topic => {
-					const id = md5(topic + queryString);
+        const query = {
+            contextValue,
+            name: validation.name,
+            source,
+            variableValues
+        };
 
-					return this.queries.insertOrUpdate({
-							clientId,
-							id,
-							topic,
-							query: queryString,
-							ttl: _.floor((_.now() / 1000) + 43200) // 12 hours
-						})
-						.mapTo({
-							onSubscribe: {
-								clientId,
-								id,
-								requestString,
-								topic
-							}
-						})
-						.onRetryableError(err => ({
-							retryable: err.retryable,
-							delay: err.retryDelay,
-							max: 5
-						}))
-						.catch(err => Observable.throw(beautyError(err, {
-							scope: 'onSubscribe.insert',
-							clientId,
-							contextValue,
-							errors,
-							id,
-							requestString,
-							variableValues,
-							topic
-						})));
-				})
-				.toArray();
-		}
+        const queryEvent = this.events[query.name];
+		const inbound = queryEvent && queryEvent.inbound(clientId, query, exclusivePayload);
 
-		return Observable.of([]);
-	}
+        if (inbound && inbound.length) {
+            const documentString = JSON.stringify(validation.document);
+            const queryString = JSON.stringify(query);
 
-	onInbound(topic, payload) {
-		const topics = this.queries.request
-			.index('topic')
-			.addPlaceholderName('topic')
-			.addPlaceholderValue({
-				topic
-			})
-			.query('#topic = :topic')
-			.onRetryableError(err => ({
-				retryable: err.retryable,
-				delay: err.retryDelay,
-				max: 5
-			}))
-			.catch(err => Observable.throw(beautyError(err, {
-				scope: 'onInbound.fetchTopics',
-				topic
-			})));
+            return Observable.from(inbound)
+                .mergeMap(topic => {
+                    const id = md5(topic + queryString);
 
-		return topics.mergeMap(({
-			clientId,
-			query
-		}) => {
-			const queryObj = JSON.parse(query);
-			const events = this.events[queryObj.queryName];
-			const outbound = events && events.outbound(clientId, queryObj, payload);
+                    return this.queries.insertOrUpdate({
+                            clientId,
+                            document: documentString,
+                            id,
+                            topic,
+                            query: queryString,
+                            ttl: _.floor((_.now() / 1000) + 43200) // 12 hours
+                        })
+                        .mapTo({
+                            onSubscribe: {
+                                clientId,
+                                id,
+                                source,
+                                topic
+                            }
+                        })
+                        .onRetryableError(err => ({
+                            retryable: err.retryable,
+                            delay: err.retryDelay,
+                            max: 5
+                        }))
+                        .catch(err => Observable.throw(beautyError(err, {
+                            scope: 'onSubscribe.insert',
+                            clientId,
+                            contextValue,
+                            errors: validation.errors,
+                            id,
+                            source,
+                            variableValues,
+                            topic
+                        })));
+                })
+                .toArray();
+        }
 
-			if (outbound && outbound.length) {
-				return this.graphqlExecute(_.extend({}, queryObj, {
-						rootValue: payload
-					}))
-					.mergeMap(response => {
-						return Observable.from(outbound)
-							.mergeMap(topic => {
-								// suppress error early to not break the chain
-								return this.publish(topic, response)
-									.catch(err => Observable.of(err));
-							})
-							.toArray();
-					});
-			}
+        return Observable.of([]);
+    }
 
-			return Observable.of([]);
-		});
-	}
+    onInbound(topic, payload) {
+        const topics = this.queries.request
+            .index('topic')
+            .addPlaceholderName('topic')
+            .addPlaceholderValue({
+                topic
+            })
+            .query('#topic = :topic')
+            .onRetryableError(err => ({
+                retryable: err.retryable,
+                delay: err.retryDelay,
+                max: 5
+            }))
+            .catch(err => Observable.throw(beautyError(err, {
+                scope: 'onInbound.fetchTopics',
+                topic
+            })));
 
-	getTopics() {
+        return topics.mergeMap(({
+            clientId,
+            document,
+            query
+        }) => {
+            query = JSON.parse(query);
 
-	}
+            const events = this.events[query.name];
+            const outbound = events && events.outbound(clientId, query, payload);
+
+            if (outbound && outbound.length) {
+                return this.graphqlExecute({
+                        contextValue: query.contextValue,
+                        document: JSON.parse(document),
+                        rootValue: payload,
+                        variableValues: query.variableValues
+                    })
+                    .mergeMap(response => {
+                        return Observable.from(outbound)
+                            .mergeMap(topic => {
+                                // suppress error early to not break the chain
+                                return this.publish(topic, response)
+                                    .catch(err => Observable.of(err));
+                            })
+                            .toArray();
+                    });
+            }
+
+            return Observable.of([]);
+        });
+    }
 }

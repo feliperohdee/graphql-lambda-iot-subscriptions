@@ -1,11 +1,3 @@
-const {
-	GraphQLError,
-	graphql,
-	parse,
-	specifiedRules,
-	validate
-} = require('graphql');
-
 const subscriptionHasSingleRootField = context => {
 	return {
 		OperationDefinition: node => {
@@ -45,29 +37,44 @@ const subscriptionHasSingleRootField = context => {
 	};
 }
 
-module.exports = {
-	execute: (schema, requestString, rootValue, contextValue, variableValues) => {
-		return graphql(schema, requestString, rootValue, contextValue, variableValues);
-	},
-	validate: (schema, requestString) => {
-		const documentAST = parse(requestString);
-		const errors = validate(
-			schema,
-			documentAST,
-			specifiedRules.concat([
-				subscriptionHasSingleRootField
-			])
-		);
+module.exports = (graphql, schema) => {
+	const {
+		GraphQLError,
+		execute,
+		parse,
+		specifiedRules,
+		validate
+	} = graphql;
 
-		if(errors.length) {
+	return {
+		execute: args => execute({
+			schema,
+			document: args.document,
+			rootValue: args.rootValue,
+			contextValue: args.contextValue,
+			variableValues: args.variableValues
+		}),
+		validate: source => {
+			const documentAST = parse(source);
+			const errors = validate(
+				schema,
+				documentAST,
+				specifiedRules.concat([
+					subscriptionHasSingleRootField
+				])
+			);
+	
+			if(errors.length) {
+				return {
+					errors
+				};
+			}
+	
 			return {
-				errors
+				document: documentAST,
+				errors: [],
+				name: documentAST.definitions[0].selectionSet.selections[0].name.value
 			};
 		}
-
-		return {
-			errors: [],
-			queryName: documentAST.definitions[0].selectionSet.selections[0].name.value
-		};
-	}
+	};
 };

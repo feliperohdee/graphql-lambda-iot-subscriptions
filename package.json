@@ -5,13 +5,12 @@
   "author": "Felipe Rohde",
   "license": "MIT",
   "dependencies": {
-    "aws-sdk": "^2.162.0",
-    "graphql": "^0.11.7",
-    "lodash": "^4.17.4",
+    "aws-sdk": "^2.306.0",
+    "lodash": "^4.17.10",
     "md5": "^2.2.1",
     "rxjs": "^5.5.2",
-    "smallorange-beauty-error": "^1.0.3",
-    "smallorange-dynamodb-client": "^1.1.5"
+    "smallorange-beauty-error": "^1.0.6",
+    "smallorange-dynamodb-client": "^1.1.7"
   },
   "scripts": {
     "test": "./node_modules/.bin/_mocha **.spec.js --watch",
@@ -25,6 +24,7 @@
   },
   "devDependencies": {
     "chai": "^4.1.2",
+    "graphql": "^14.0.0",
     "mocha": "^4.0.1",
     "sinon": "^4.1.2",
     "sinon-chai": "^2.14.0"

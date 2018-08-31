@@ -43,13 +43,13 @@ const schema = exports.schema = new GraphQLSchema({
 
 const events = exports.events = {
 	onMessage: {
-		inbound: (clientId, queryObj, payload) => {
+		inbound: (clientId, query, payload) => {
 			return [
 				'subscriptions/inbound/messages',
 				'subscriptions/inbound/anotherMessages',
 			];
 		},
-		outbound: (clientId, queryObj, payload) => {
+		outbound: (clientId, query, payload) => {
 			return [
 				clientId,
 				'another'

@@ -8,6 +8,7 @@ const sinon = require('sinon');
 const sinonChai = require('sinon-chai');
 const md5 = require('md5');
 const beautyError = require('smallorange-beauty-error');
+const graphql = require('graphql');
 const {
 	Request
 } = require('smallorange-dynamodb-client');
@@ -41,7 +42,7 @@ describe('index.js', () => {
 	});
 
 	beforeEach(() => {
-		subscriptions = new Subscriptions(testing.events, testing.schema);
+		subscriptions = new Subscriptions(testing.events, testing.schema, graphql);
 	});
 
 	describe('constructor', () => {
@@ -51,6 +52,10 @@ describe('index.js', () => {
 
 		it('should throw if no schema provided', () => {
 			expect(() => new Subscriptions(testing.events)).to.throw('schema is required.');
+		});
+		
+		it('should throw if no graphql provided', () => {
+			expect(() => new Subscriptions(testing.events, testing.schema)).to.throw('graphql is required.');
 		});
 
 		it('should have events', () => {
@@ -70,7 +75,7 @@ describe('index.js', () => {
 		});
 
 		it('should have custom topics', () => {
-			subscriptions = new Subscriptions(testing.events, testing.schema, {
+			subscriptions = new Subscriptions(testing.events, testing.schema, graphql, {
 				inbound: 'custom/inbound',
 				subscribe: 'custom/subscribe',
 				disconnect: 'custom/disconnected'
@@ -93,7 +98,7 @@ describe('index.js', () => {
 		});
 
 		it('should have queries with custom tableName', () => {
-			subscriptions = new Subscriptions(testing.events, testing.schema, {}, 'customTableName');
+			subscriptions = new Subscriptions(testing.events, testing.schema, graphql, {}, 'customTableName');
 
 			expect(subscriptions.queries.tableName).to.be.equal('customTableName');
 		});
@@ -105,12 +110,16 @@ describe('index.js', () => {
 
 	describe('graphqlExecute', () => {
 		it('should execute graphql query and return an Observable', done => {
+			const validation = subscriptions.graphqlValidate(
+				`subscription {
+					onMessage {
+						text
+					}
+				}`
+			);
+
 			subscriptions.graphqlExecute({
-					requestString: `subscription {
-						onMessage {
-							text
-						}
-					}`,
+					document: validation.document,
 					rootValue: {
 						text: 'Lorem ipsum dolor sit amet.'
 					}
@@ -128,28 +137,29 @@ describe('index.js', () => {
 	});
 
 	describe('graphqlValidate', () => {
-		it('should validate graphql query and return no errors and queryName', () => {
-			const result = subscriptions.graphqlValidate(`subscription {
+		it('should validate graphql query and return no errors and name', () => {
+			const validation = subscriptions.graphqlValidate(`subscription {
 				onMessage {
 					text
 				}
 			}`);
 
-			expect(result).to.deep.equal({
+			expect(validation).to.deep.equal({
+				document: validation.document,
 				errors: [],
-				queryName: 'onMessage'
+				name: 'onMessage'
 			});
 		});
 
 		it('should validate graphql query and return errors', () => {
-			const result = subscriptions.graphqlValidate(`subscription {
+			const validation = subscriptions.graphqlValidate(`subscription {
 				onMessage {
 					texts
 				}
 			}`);
 
-			expect(result).to.deep.equal({
-				errors: result.errors
+			expect(validation).to.deep.equal({
+				errors: validation.errors
 			});
 		});
 	});
@@ -186,11 +196,11 @@ describe('index.js', () => {
 
 		it('should call onSubscribe', done => {
 			subscriptions.handle('subscriptions/subscribe', {
-					requestString: 'requestString'
+					source: 'source'
 				})
 				.subscribe(null, null, () => {
 					expect(subscriptions.onSubscribe).to.have.been.calledWithExactly('subscriptions/subscribe', {
-						requestString: 'requestString'
+						source: 'source'
 					});
 					done();
 				});
@@ -423,14 +433,15 @@ describe('index.js', () => {
 	});
 
 	describe('onSubscribe', () => {
-		let queryObject;
+		let query;
+		let validation;
 
 		beforeEach(() => {
-			queryObject = {
+			query = {
 				contextValue: {
 					contextValue: 'contextValue'
 				},
-				requestString: `subscription {
+				source: `subscription {
 					onMessage {
 						text
 					}
@@ -439,6 +450,8 @@ describe('index.js', () => {
 					variableValues: 'variableValues'
 				}
 			};
+
+			validation = subscriptions.graphqlValidate(query.source);
 
 			sinon.spy(testing.events.onMessage, 'inbound');
 			sinon.spy(subscriptions, 'graphqlValidate');
@@ -468,7 +481,7 @@ describe('index.js', () => {
 
 		it('should call query.inbound', done => {
 			subscriptions.onSubscribe('topic', {
-					...queryObject,
+					...query,
 					clientId: 'clientId',
 					payload: {
 						payload: 'payload'
@@ -476,10 +489,10 @@ describe('index.js', () => {
 				})
 				.subscribe(() => {
 					expect(testing.events.onMessage.inbound).to.have.been.calledWithExactly('clientId', {
-						contextValue: queryObject.contextValue,
-						queryName: 'onMessage',
-						requestString: queryObject.requestString,
-						variableValues: queryObject.variableValues
+						contextValue: query.contextValue,
+						name: 'onMessage',
+						source: query.source,
+						variableValues: query.variableValues
 					}, {
 						payload: {
 							payload: 'payload'
@@ -490,17 +503,17 @@ describe('index.js', () => {
 
 		it('should call queries.insertOrUpdate', done => {
 			const queryString = JSON.stringify({
-				contextValue: queryObject.contextValue,
-				queryName: 'onMessage',
-				requestString: queryObject.requestString,
-				variableValues: queryObject.variableValues
+				contextValue: query.contextValue,
+				name: validation.name,
+				source: query.source,
+				variableValues: query.variableValues
 			});
 
 			const id1 = md5('subscriptions/inbound/messages' + queryString);
 			const id2 = md5('subscriptions/inbound/anotherMessages' + queryString);
 
 			subscriptions.onSubscribe('topic', {
-					...queryObject,
+					...query,
 					clientId: 'clientId'
 				})
 				.subscribe(() => {
@@ -510,6 +523,7 @@ describe('index.js', () => {
 
 					expect(subscriptions.queries.insertOrUpdate).to.have.been.calledWithExactly({
 						clientId: 'clientId',
+						document: JSON.stringify(validation.document),
 						id: id1,
 						query: queryString,
 						topic: 'subscriptions/inbound/messages',
@@ -518,6 +532,7 @@ describe('index.js', () => {
 
 					expect(subscriptions.queries.insertOrUpdate).to.have.been.calledWithExactly({
 						clientId: 'clientId',
+						document: JSON.stringify(validation.document),
 						id: id2,
 						query: queryString,
 						topic: 'subscriptions/inbound/anotherMessages',
@@ -528,22 +543,22 @@ describe('index.js', () => {
 
 		it('should return', done => {
 			subscriptions.onSubscribe('topic', {
-					...queryObject,
+					...query,
 					clientId: 'clientId'
 				})
 				.subscribe(response => {
 					expect(response).to.deep.equal([{
 						onSubscribe: {
 							clientId: 'clientId',
-							id: '06ca32ad633a6ad2f83070502c5a040c',
-							requestString: 'subscription {\n\t\t\t\t\tonMessage {\n\t\t\t\t\t\ttext\n\t\t\t\t\t}\n\t\t\t\t}',
+							id: 'f5a169cb0c74edb234bfa48d41dd8d34',
+							source: 'subscription {\n\t\t\t\t\tonMessage {\n\t\t\t\t\t\ttext\n\t\t\t\t\t}\n\t\t\t\t}',
 							topic: 'subscriptions/inbound/messages'
 						}
 					}, {
 						onSubscribe: {
 							clientId: 'clientId',
-							id: '7da8e4de7002bc982b9659c2d5bb57e7',
-							requestString: 'subscription {\n\t\t\t\t\tonMessage {\n\t\t\t\t\t\ttext\n\t\t\t\t\t}\n\t\t\t\t}',
+							id: '84ea095f8160c7dc7497a701e1500e45',
+							source: 'subscription {\n\t\t\t\t\tonMessage {\n\t\t\t\t\t\ttext\n\t\t\t\t\t}\n\t\t\t\t}',
 							topic: 'subscriptions/inbound/anotherMessages'
 						}
 					}]);
@@ -553,11 +568,11 @@ describe('index.js', () => {
 		it('should not duplicate query to same client', done => {
 			Observable.forkJoin(
 					subscriptions.onSubscribe('topic', {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					}),
 					subscriptions.onSubscribe('topic', {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 				)
@@ -577,15 +592,15 @@ describe('index.js', () => {
 				}, null, done);
 		});
 
-		it('should return empty if no matched query', done => {
-			queryObject.requestString = `subscription {
+		it('should return empty if no inbound', done => {
+			query.source = `subscription {
 				onChange {
 					text
 				}
 			}`;
 
 			subscriptions.onSubscribe('topic', {
-					...queryObject,
+					...query,
 					clientId: 'clientId'
 				})
 				.subscribe(response => {
@@ -593,12 +608,12 @@ describe('index.js', () => {
 				}, null, done);
 		});
 
-		describe('no requestString', () => {
+		describe('no source', () => {
 			it('should send error to client', done => {
-				queryObject.requestString = null;
+				query.source = null;
 
 				subscriptions.onSubscribe('topic', {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 					.subscribe(null, err => {
@@ -612,14 +627,14 @@ describe('index.js', () => {
 			});
 
 			it('should throw beautified error', done => {
-				queryObject.requestString = null;
+				query.source = null;
 
 				subscriptions.onSubscribe('topic', {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 					.subscribe(null, err => {
-						expect(err.message).to.equal('no requestString provided.');
+						expect(err.message).to.equal('no source provided.');
 						expect(err.context).to.deep.equal({
 							scope: 'onSubscribe',
 							clientId: 'clientId'
@@ -632,23 +647,23 @@ describe('index.js', () => {
 		describe('validation', () => {
 			it('should call graphqlValidate', done => {
 				subscriptions.onSubscribe('topic', {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 					.subscribe(() => {
-						expect(subscriptions.graphqlValidate).to.have.been.calledWithExactly(queryObject.requestString);
+						expect(subscriptions.graphqlValidate).to.have.been.calledWithExactly(query.source);
 					}, null, done);
 			});
 
 			it('should send invalidations to client', done => {
-				queryObject.requestString = `subscription {
+				query.source = `subscription {
 					onMessage {
 						texts
 					}
 				}`;
 
 				subscriptions.onSubscribe('topic', {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 					.subscribe(null, err => {
@@ -664,14 +679,14 @@ describe('index.js', () => {
 			});
 
 			it('should not send invalidations to client if no mqtt', done => {
-				queryObject.requestString = `subscription {
+				query.source = `subscription {
 					onMessage {
 						texts
 					}
 				}`;
 
 				subscriptions.onSubscribe(null, {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 					.subscribe(null, err => {
@@ -682,24 +697,24 @@ describe('index.js', () => {
 			});
 
 			it('should throw beautified error', done => {
-				queryObject.requestString = `subscription {
+				query.source = `subscription {
 					onMessage {
 						texts
 					}
 				}`;
 
 				subscriptions.onSubscribe(null, {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 					.subscribe(null, err => {
-						expect(err.message).to.equal('invalid requestString.');
+						expect(err.message).to.equal('invalid source.');
 						expect(err.context).to.have.all.keys([
 							'scope',
 							'clientId',
 							'contextValue',
 							'errors',
-							'requestString',
+							'source',
 							'variableValues'
 						]);
 						expect(err.context.scope).to.equal('onSubscribe');
@@ -732,7 +747,7 @@ describe('index.js', () => {
 
 			it('should retry times if retryable', done => {
 				subscriptions.onSubscribe('topic', {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 					.subscribe(null, err => {
@@ -743,7 +758,7 @@ describe('index.js', () => {
 
 			it('should throw beautified error', done => {
 				subscriptions.onSubscribe('topic', {
-						...queryObject,
+						...query,
 						clientId: 'clientId'
 					})
 					.subscribe(null, err => {
@@ -754,7 +769,7 @@ describe('index.js', () => {
 							'contextValue',
 							'errors',
 							'id',
-							'requestString',
+							'source',
 							'variableValues',
 							'topic'
 						]);
@@ -766,39 +781,49 @@ describe('index.js', () => {
 	});
 
 	describe('onInbound', () => {
-		let queryObject;
+		let query;
+		let queryString;
+		let validation;
+		let documentString;
 
 		beforeEach(() => {
-			queryObject = {
+			query = {
 				contextValue: {
 					contextValue: 'contextValue'
 				},
-				requestString: `subscription {
+				source: `subscription {
 					onMessage {
 						text
 					}
 				}`,
-				queryName: 'onMessage',
+				name: 'onMessage',
 				variableValues: {
 					variableValues: 'variableValues'
 				}
 			};
 
+			validation = subscriptions.graphqlValidate(query.source);
+			queryString = JSON.stringify(query);
+			documentString = JSON.stringify(validation.document);
+
 			sinon.stub(Request.prototype, 'query')
 				.returns(Observable.of({
 					clientId: 'clientId',
-					query: JSON.stringify(queryObject)
+					document: documentString,
+					query: queryString
 				}, {
 					clientId: 'clientId',
-					query: JSON.stringify(queryObject)
+					document: documentString,
+					query: queryString
 				}, {
 					clientId: 'clientId',
-					query: JSON.stringify(queryObject)
+					document: documentString,
+					query: queryString
 				}, {
 					clientId: 'clientId',
 					query: JSON.stringify({
-						...queryObject,
-						queryName: 'inexistent'
+						...query,
+						name: 'inexistent'
 					})
 				}));
 
@@ -837,10 +862,12 @@ describe('index.js', () => {
 				.subscribe(null, null, () => {
 					expect(subscriptions.graphqlExecute).to.have.been.calledThrice;
 					expect(subscriptions.graphqlExecute).to.have.been.calledWithExactly({
-						...queryObject,
+						contextValue: query.contextValue,
+						document: JSON.parse(documentString),
 						rootValue: {
 							text: 'text'
-						}
+						},
+						variableValues: query.variableValues
 					});
 					done();
 				});
@@ -852,7 +879,7 @@ describe('index.js', () => {
 				})
 				.subscribe(null, null, () => {
 					expect(testing.events.onMessage.outbound).to.have.been.calledThrice;
-					expect(testing.events.onMessage.outbound).to.have.been.calledWithExactly('clientId', queryObject, {
+					expect(testing.events.onMessage.outbound).to.have.been.calledWithExactly('clientId', query, {
 						text: 'text'
 					});
 					done();
@@ -890,7 +917,6 @@ describe('index.js', () => {
 				.toArray()
 				.subscribe(response => {
 					expect(response).to.deep.equal([
-						[],
 						[{
 							publish: {
 								payload: {
@@ -959,7 +985,8 @@ describe('index.js', () => {
 								},
 								topic: 'another'
 							}
-						}]
+						}],
+						[]
 					]);
 				}, null, done);
 		});
@@ -1033,8 +1060,8 @@ describe('index.js', () => {
 					})
 					.toArray()
 					.subscribe(response => {
-						expect(response[1][0].message).to.equal('error');
-						expect(response[1][1]).to.deep.equal({
+						expect(response[0][0].message).to.equal('error');
+						expect(response[0][1]).to.deep.equal({
 							publish: {
 								topic: 'another',
 								payload: {
