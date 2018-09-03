@@ -181,7 +181,7 @@ describe('index.js', () => {
                     });
                 }, null, done);
         });
-        
+
         it('should execute with custom executor', done => {
             const executor = sinon.stub()
                 .resolves({
@@ -1050,7 +1050,7 @@ describe('index.js', () => {
                         },
                         variableValues: query.variableValues
                     }, undefined);
-                    
+
                     expect(subscriptions.graphqlExecute).to.have.been.calledWithExactly({
                         contextValue: _.extend({}, subscriptions.contextValue, query.contextValue),
                         document: '',
@@ -1104,103 +1104,96 @@ describe('index.js', () => {
             subscriptions.onInbound('topic', {
                     text: 'text'
                 })
-                .toArray()
                 .subscribe(response => {
-                    expect(response).to.deep.equal([
-                        [{
-                            publish: {
-                                payload: {
-                                    data: {
-                                        onMessage: {
-                                            text: 'text'
-                                        }
+                    expect(response).to.deep.equal([{
+                        publish: {
+                            payload: {
+                                data: {
+                                    onMessage: {
+                                        text: 'text'
                                     }
-                                },
-                                topic: 'clientId'
-                            }
-                        }, {
-                            publish: {
-                                payload: {
-                                    data: {
-                                        onMessage: {
-                                            text: 'text'
-                                        }
+                                }
+                            },
+                            topic: 'clientId'
+                        }
+                    }, {
+                        publish: {
+                            payload: {
+                                data: {
+                                    onMessage: {
+                                        text: 'text'
                                     }
-                                },
-                                topic: 'another'
-                            }
-                        }],
-                        [{
-                            publish: {
-                                payload: {
-                                    data: {
-                                        onMessage: {
-                                            text: 'text'
-                                        }
+                                }
+                            },
+                            topic: 'another'
+                        }
+                    }, {
+                        publish: {
+                            payload: {
+                                data: {
+                                    onMessage: {
+                                        text: 'text'
                                     }
-                                },
-                                topic: 'clientId'
-                            }
-                        }, {
-                            publish: {
-                                payload: {
-                                    data: {
-                                        onMessage: {
-                                            text: 'text'
-                                        }
+                                }
+                            },
+                            topic: 'clientId'
+                        }
+                    }, {
+                        publish: {
+                            payload: {
+                                data: {
+                                    onMessage: {
+                                        text: 'text'
                                     }
-                                },
-                                topic: 'another'
-                            }
-                        }],
-                        [{
-                            publish: {
-                                payload: {
-                                    data: {
-                                        onMessage: {
-                                            text: 'text'
-                                        }
+                                }
+                            },
+                            topic: 'another'
+                        }
+                    }, {
+                        publish: {
+                            payload: {
+                                data: {
+                                    onMessage: {
+                                        text: 'text'
                                     }
-                                },
-                                topic: 'clientId'
-                            }
-                        }, {
-                            publish: {
-                                payload: {
-                                    data: {
-                                        onMessage: {
-                                            text: 'text'
-                                        }
+                                }
+                            },
+                            topic: 'clientId'
+                        }
+                    }, {
+                        publish: {
+                            payload: {
+                                data: {
+                                    onMessage: {
+                                        text: 'text'
                                     }
-                                },
-                                topic: 'another'
-                            }
-                        }],
-                        [],
-                        [{
-                            publish: {
-                                payload: {
-                                    data: {
-                                        onMessage: {
-                                            text: 'text'
-                                        }
+                                }
+                            },
+                            topic: 'another'
+                        }
+                    }, {
+                        publish: {
+                            payload: {
+                                data: {
+                                    onMessage: {
+                                        text: 'text'
                                     }
-                                },
-                                topic: 'clientId'
-                            }
-                        }, {
-                            publish: {
-                                payload: {
-                                    data: {
-                                        onMessage: {
-                                            text: 'text'
-                                        }
+                                }
+                            },
+                            topic: 'clientId'
+                        }
+                    }, {
+                        publish: {
+                            payload: {
+                                data: {
+                                    onMessage: {
+                                        text: 'text'
                                     }
-                                },
-                                topic: 'another'
-                            }
-                        }]
-                    ]);
+                                }
+                            },
+                            topic: 'another'
+                        }
+                    }]);
                 }, null, done);
         });
 

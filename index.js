@@ -341,37 +341,39 @@ module.exports = class Subscriptions {
                     })));
 
                 return topics.mergeMap(({
-                    clientId,
-                    document,
-                    query
-                }) => {
-                    query = JSON.parse(query);
+                        clientId,
+                        document,
+                        query
+                    }) => {
+                        query = JSON.parse(query);
 
-                    const events = this.events[query.name];
-                    const outbound = events && events.outbound(clientId, query, payload);
+                        const events = this.events[query.name];
+                        const outbound = events && events.outbound(clientId, query, payload);
 
-                    if (outbound && outbound.length) {
-                        const localQuery = this.localQueries[query.source];
+                        if (outbound && outbound.length) {
+                            const localQuery = this.localQueries[query.source];
 
-                        return this.graphqlExecute({
-                                contextValue: _.extend({}, this.contextValue, query.contextValue),
-                                document: JSON.parse(document),
-                                rootValue: payload,
-                                variableValues: query.variableValues
-                            }, localQuery)
-                            .mergeMap(response => {
-                                return Observable.from(outbound)
-                                    .mergeMap(topic => {
-                                        // suppress error early to not break the chain
-                                        return this.publish(topic, response)
-                                            .catch(err => Observable.of(err));
-                                    })
-                                    .toArray();
-                            });
-                    }
+                            return this.graphqlExecute({
+                                    contextValue: _.extend({}, this.contextValue, query.contextValue),
+                                    document: JSON.parse(document),
+                                    rootValue: payload,
+                                    variableValues: query.variableValues
+                                }, localQuery)
+                                .mergeMap(response => {
+                                    return Observable.from(outbound)
+                                        .mergeMap(topic => {
+                                            // suppress error early to not break the chain
+                                            return this.publish(topic, response)
+                                                .catch(err => Observable.of(err));
+                                        });
+                                });
+                        }
 
-                    return Observable.of([]);
-                });
+                        return Observable.of([]);
+                    })
+                    .reduce((reduction, response) => {
+                        return reduction.concat(response);
+                    }, []);
             });
     }
 }
