@@ -181,6 +181,28 @@ describe('index.js', () => {
                     });
                 }, null, done);
         });
+        
+        it('should execute with custom executor', done => {
+            const executor = sinon.stub()
+                .resolves({
+                    data: {
+                        onMessage: {
+                            text: 'Lorem ipsum dolor sit amet.'
+                        }
+                    }
+                });
+
+            subscriptions.graphqlExecute({}, executor)
+                .subscribe(response => {
+                    expect(response).to.deep.equal({
+                        data: {
+                            onMessage: {
+                                text: 'Lorem ipsum dolor sit amet.'
+                            }
+                        }
+                    });
+                }, null, done);
+        });
     });
 
     describe('graphqlValidate', () => {
@@ -943,13 +965,13 @@ describe('index.js', () => {
 
             subscriptions.localQueries = {
                 onMessage: sinon.stub()
-                    .returns(Observable.of({
+                    .resolves({
                         data: {
                             onMessage: {
                                 text: 'text'
                             }
                         }
-                    }))
+                    })
             };
 
             validation = subscriptions.graphqlValidate(query.source);
@@ -1019,7 +1041,7 @@ describe('index.js', () => {
                     text: 'text'
                 })
                 .subscribe(null, null, () => {
-                    expect(subscriptions.graphqlExecute).to.have.been.calledThrice;
+                    expect(subscriptions.graphqlExecute).to.have.callCount(4);
                     expect(subscriptions.graphqlExecute).to.have.been.calledWithExactly({
                         contextValue: _.extend({}, subscriptions.contextValue, query.contextValue),
                         document: JSON.parse(documentString),
@@ -1027,16 +1049,16 @@ describe('index.js', () => {
                             text: 'text'
                         },
                         variableValues: query.variableValues
-                    });
-
-                    expect(subscriptions.localQueries.onMessage).to.have.been.calledOnce;
-                    expect(subscriptions.localQueries.onMessage).to.have.been.calledWithExactly({
+                    }, undefined);
+                    
+                    expect(subscriptions.graphqlExecute).to.have.been.calledWithExactly({
                         contextValue: _.extend({}, subscriptions.contextValue, query.contextValue),
+                        document: '',
                         rootValue: {
                             text: 'text'
                         },
                         variableValues: query.variableValues
-                    });
+                    }, subscriptions.localQueries.onMessage);
                     done();
                 });
         });

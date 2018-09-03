@@ -95,8 +95,8 @@ module.exports = class Subscriptions {
         this.iotPublish = Observable.bindNodeCallback(AWS.iot.publish.bind(AWS.iot));
     }
 
-    graphqlExecute(args) {
-        const result = this.graphql.execute(args);
+    graphqlExecute(args, execute) {
+        const result = execute ? execute(args) : this.graphql.execute(args);
 
         if (result.then) {
             return Observable.fromPromise(result);
@@ -353,16 +353,12 @@ module.exports = class Subscriptions {
                     if (outbound && outbound.length) {
                         const localQuery = this.localQueries[query.source];
 
-                        return (localQuery ? localQuery({
-                                contextValue: _.extend({}, this.contextValue, query.contextValue),
-                                rootValue: payload,
-                                variableValues: query.variableValues
-                            }) : this.graphqlExecute({
+                        return this.graphqlExecute({
                                 contextValue: _.extend({}, this.contextValue, query.contextValue),
                                 document: JSON.parse(document),
                                 rootValue: payload,
                                 variableValues: query.variableValues
-                            }))
+                            }, localQuery)
                             .mergeMap(response => {
                                 return Observable.from(outbound)
                                     .mergeMap(topic => {
