@@ -43,6 +43,9 @@ describe('index.js', () => {
 
     beforeEach(() => {
         subscriptions = new Subscriptions({
+			contextValue: {
+				customContext: 'customContext'
+			},
             events: testing.events,
             schema: testing.schema,
             graphql
@@ -67,7 +70,11 @@ describe('index.js', () => {
             })).to.throw('graphql is required.');
         });
 
-        it('should have events', () => {
+        it('should have contextValue', () => {
+            expect(subscriptions.contextValue).to.be.an('object');
+        });
+		
+		it('should have events', () => {
             expect(subscriptions.events).to.be.an('object');
         });
 
@@ -894,7 +901,7 @@ describe('index.js', () => {
                 .subscribe(null, null, () => {
                     expect(subscriptions.graphqlExecute).to.have.been.calledThrice;
                     expect(subscriptions.graphqlExecute).to.have.been.calledWithExactly({
-                        contextValue: query.contextValue,
+                        contextValue: _.extend({}, subscriptions.contextValue, query.contextValue),
                         document: JSON.parse(documentString),
                         rootValue: {
                             text: 'text'

@@ -43,6 +43,7 @@ Observable.prototype.onRetryableError = function(callback = {}) {
 module.exports = class Subscriptions {
     constructor(args = {}) {
         const {
+            contextValue,
             events,
             schema,
             graphql,
@@ -63,6 +64,7 @@ module.exports = class Subscriptions {
             throw new Error('graphql is required.');
         }
 
+        this.contextValue = contextValue;
         this.events = events;
         this.schema = schema;
         this.topics = _.defaults(topics, {
@@ -295,7 +297,7 @@ module.exports = class Subscriptions {
 
             if (outbound && outbound.length) {
                 return this.graphqlExecute({
-                        contextValue: query.contextValue,
+                        contextValue: _.extend({}, this.contextValue, query.contextValue),
                         document: JSON.parse(document),
                         rootValue: payload,
                         variableValues: query.variableValues
