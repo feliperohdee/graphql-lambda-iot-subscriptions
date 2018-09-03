@@ -130,6 +130,10 @@ describe('index.js', () => {
             expect(subscriptions.hooks).to.be.an('object');
         });
 
+        it('should have localQueries', () => {
+            expect(subscriptions.localQueries).to.be.an('object');
+        });
+
         it('should have queries with default tableName', () => {
             expect(subscriptions.queries).to.be.an('object');
             expect(subscriptions.queries.tableName).to.be.equal('graphqlSubscriptionQueries');
@@ -682,6 +686,41 @@ describe('index.js', () => {
                 }, null, done);
         });
 
+        describe('with localQuery', () => {
+            beforeEach(() => {
+                subscriptions.localQueries.onMessage = sinon.stub();
+            });
+
+            afterEach(() => {
+                subscriptions.localQueries = {};
+            });
+
+            it('should return', done => {
+                subscriptions.onSubscribe('topic', {
+                        ...query,
+                        source: 'onMessage',
+                        clientId: 'clientId'
+                    })
+                    .subscribe(response => {
+                        expect(response).to.deep.equal([{
+                            onSubscribe: {
+                                clientId: 'clientId',
+                                id: '4c6dd53c8f5945cb4955fdf1b79bca4f',
+                                source: 'onMessage',
+                                topic: 'subscriptions/inbound/messages'
+                            }
+                        }, {
+                            onSubscribe: {
+                                clientId: 'clientId',
+                                id: 'ccc08b317429a964b300992967b9a391',
+                                source: 'onMessage',
+                                topic: 'subscriptions/inbound/anotherMessages'
+                            }
+                        }]);
+                    }, null, done);
+            });
+        });
+
         describe('hook', () => {
             beforeEach(() => {
                 subscriptions.hooks.onSubscribe = sinon.stub()
@@ -868,7 +907,6 @@ describe('index.js', () => {
                             'scope',
                             'clientId',
                             'contextValue',
-                            'errors',
                             'id',
                             'source',
                             'variableValues',
@@ -903,6 +941,17 @@ describe('index.js', () => {
                 }
             };
 
+            subscriptions.localQueries = {
+                onMessage: sinon.stub()
+                    .returns(Observable.of({
+                        data: {
+                            onMessage: {
+                                text: 'text'
+                            }
+                        }
+                    }))
+            };
+
             validation = subscriptions.graphqlValidate(query.source);
             queryString = JSON.stringify(query);
             documentString = JSON.stringify(validation.document);
@@ -922,9 +971,17 @@ describe('index.js', () => {
                     query: queryString
                 }, {
                     clientId: 'clientId',
+                    document: documentString,
                     query: JSON.stringify({
                         ...query,
                         name: 'inexistent'
+                    })
+                }, {
+                    clientId: 'clientId',
+                    document: JSON.stringify(''),
+                    query: JSON.stringify({
+                        ...query,
+                        source: 'onMessage'
                     })
                 }));
 
@@ -944,6 +1001,7 @@ describe('index.js', () => {
             Request.prototype.query.restore();
             testing.events.onMessage.outbound.restore();
             subscriptions.graphqlExecute.restore();
+            subscriptions.localQueries = {};
         });
 
         it('should call queries.query', done => {
@@ -956,7 +1014,7 @@ describe('index.js', () => {
                 });
         });
 
-        it('should call graphQlExecute', done => {
+        it('should call graphQlExecute and localQuery', done => {
             subscriptions.onInbound('topic', {
                     text: 'text'
                 })
@@ -965,6 +1023,15 @@ describe('index.js', () => {
                     expect(subscriptions.graphqlExecute).to.have.been.calledWithExactly({
                         contextValue: _.extend({}, subscriptions.contextValue, query.contextValue),
                         document: JSON.parse(documentString),
+                        rootValue: {
+                            text: 'text'
+                        },
+                        variableValues: query.variableValues
+                    });
+
+                    expect(subscriptions.localQueries.onMessage).to.have.been.calledOnce;
+                    expect(subscriptions.localQueries.onMessage).to.have.been.calledWithExactly({
+                        contextValue: _.extend({}, subscriptions.contextValue, query.contextValue),
                         rootValue: {
                             text: 'text'
                         },
@@ -979,7 +1046,7 @@ describe('index.js', () => {
                     text: 'text'
                 })
                 .subscribe(null, null, () => {
-                    expect(testing.events.onMessage.outbound).to.have.been.calledThrice;
+                    expect(testing.events.onMessage.outbound).to.have.callCount(4);
                     expect(testing.events.onMessage.outbound).to.have.been.calledWithExactly('clientId', query, {
                         text: 'text'
                     });
@@ -992,7 +1059,7 @@ describe('index.js', () => {
                     text: 'text'
                 })
                 .subscribe(null, null, () => {
-                    expect(subscriptions.publish).to.have.callCount(6);
+                    expect(subscriptions.publish).to.have.callCount(8);
                     expect(subscriptions.publish).to.have.been.calledWithExactly('clientId', {
                         data: {
                             onMessage: {
@@ -1087,7 +1154,30 @@ describe('index.js', () => {
                                 topic: 'another'
                             }
                         }],
-                        []
+                        [],
+                        [{
+                            publish: {
+                                payload: {
+                                    data: {
+                                        onMessage: {
+                                            text: 'text'
+                                        }
+                                    }
+                                },
+                                topic: 'clientId'
+                            }
+                        }, {
+                            publish: {
+                                payload: {
+                                    data: {
+                                        onMessage: {
+                                            text: 'text'
+                                        }
+                                    }
+                                },
+                                topic: 'another'
+                            }
+                        }]
                     ]);
                 }, null, done);
         });

@@ -57,6 +57,7 @@ module.exports = class Subscriptions {
             events,
             graphql,
             hooks = {},
+            localQueries = {},
             schema,
             tableName = 'graphqlSubscriptionQueries',
             topics
@@ -84,6 +85,7 @@ module.exports = class Subscriptions {
         });
         this.graphql = graphqlFactory(graphql, schema);
         this.hooks = hooks;
+        this.localQueries = localQueries;
 
         this.dynamoDb = dynamoDb || new DynamoDB({
             client: AWS.dynamoDb
@@ -193,9 +195,9 @@ module.exports = class Subscriptions {
             }) => {
                 const {
                     clientId = null,
-                    contextValue = {},
-                    source = null,
-                    variableValues = {}
+                        contextValue = {},
+                        source = null,
+                        variableValues = {}
                 } = payload;
 
                 const isMqtt = !!topic;
@@ -222,36 +224,53 @@ module.exports = class Subscriptions {
                         })));
                 }
 
-                const validation = this.graphqlValidate(source);
-
-                if (validation.errors && validation.errors.length) {
-                    isMqtt && this.publish(clientId, {
-                        errors: validation.errors
-                    });
-
-                    return Observable.throw(beautyError('invalid source.', {
-                        scope: 'onSubscribe',
-                        clientId,
-                        contextValue,
-                        errors: validation.errors,
-                        source,
-                        variableValues
-                    }));
-                }
-
+                const localQuery = this.localQueries[source];
                 const query = {
                     contextValue,
-                    name: validation.name,
                     source,
                     variableValues
                 };
 
+                if (localQuery) {
+                    query.name = source;
+                } else {
+                    const validation = this.graphqlValidate(source);
+
+                    if (validation.errors && validation.errors.length) {
+                        isMqtt && this.publish(clientId, {
+                            errors: validation.errors
+                        });
+
+                        return Observable.throw(beautyError('invalid source.', {
+                            scope: 'onSubscribe',
+                            clientId,
+                            contextValue,
+                            errors: validation.errors,
+                            source,
+                            variableValues
+                        }));
+                    }
+
+                    query.document = validation.document;
+                    query.name = validation.name;
+                }
+
                 const queryEvent = this.events[query.name];
-                const inbound = queryEvent && queryEvent.inbound(clientId, query, exclusivePayload);
+                const inbound = queryEvent && queryEvent.inbound(clientId, {
+                    contextValue: query.contextValue,
+                    name: query.name,
+                    source: query.source,
+                    variableValues: query.variableValues
+                }, exclusivePayload);
 
                 if (inbound && inbound.length) {
-                    const documentString = JSON.stringify(validation.document);
-                    const queryString = JSON.stringify(query);
+                    const documentString = localQuery ? null : JSON.stringify(query.document);
+                    const queryString = JSON.stringify({
+                        contextValue: query.contextValue,
+                        name: query.name,
+                        source: query.source,
+                        variableValues: query.variableValues
+                    });
 
                     return Observable.from(inbound)
                         .mergeMap(topic => {
@@ -282,7 +301,6 @@ module.exports = class Subscriptions {
                                     scope: 'onSubscribe.insert',
                                     clientId,
                                     contextValue,
-                                    errors: validation.errors,
                                     id,
                                     source,
                                     variableValues,
@@ -333,12 +351,18 @@ module.exports = class Subscriptions {
                     const outbound = events && events.outbound(clientId, query, payload);
 
                     if (outbound && outbound.length) {
-                        return this.graphqlExecute({
+                        const localQuery = this.localQueries[query.source];
+
+                        return (localQuery ? localQuery({
+                                contextValue: _.extend({}, this.contextValue, query.contextValue),
+                                rootValue: payload,
+                                variableValues: query.variableValues
+                            }) : this.graphqlExecute({
                                 contextValue: _.extend({}, this.contextValue, query.contextValue),
                                 document: JSON.parse(document),
                                 rootValue: payload,
                                 variableValues: query.variableValues
-                            })
+                            }))
                             .mergeMap(response => {
                                 return Observable.from(outbound)
                                     .mergeMap(topic => {
