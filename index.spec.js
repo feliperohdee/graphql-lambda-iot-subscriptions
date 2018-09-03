@@ -43,9 +43,9 @@ describe('index.js', () => {
 
     beforeEach(() => {
         subscriptions = new Subscriptions({
-			contextValue: {
-				customContext: 'customContext'
-			},
+            contextValue: {
+                customContext: 'customContext'
+            },
             events: testing.events,
             schema: testing.schema,
             graphql
@@ -73,8 +73,21 @@ describe('index.js', () => {
         it('should have contextValue', () => {
             expect(subscriptions.contextValue).to.be.an('object');
         });
-		
-		it('should have events', () => {
+
+        it('should have custom dynamoDb', () => {
+            const customDynamoDb = {};
+
+            subscriptions = new Subscriptions({
+                events: testing.events,
+                schema: testing.schema,
+                graphql,
+                dynamoDb: customDynamoDb
+            });
+
+            expect(subscriptions.queries.dynamoDb).to.be.equal(customDynamoDb);
+        });
+
+        it('should have events', () => {
             expect(subscriptions.events).to.be.an('object');
         });
 
@@ -113,6 +126,10 @@ describe('index.js', () => {
             expect(subscriptions.dynamoDb).to.be.an('object');
         });
 
+        it('should have hooks', () => {
+            expect(subscriptions.hooks).to.be.an('object');
+        });
+
         it('should have queries with default tableName', () => {
             expect(subscriptions.queries).to.be.an('object');
             expect(subscriptions.queries.tableName).to.be.equal('graphqlSubscriptionQueries');
@@ -127,19 +144,6 @@ describe('index.js', () => {
             });
 
             expect(subscriptions.queries.tableName).to.be.equal('customTableName');
-        });
-		
-		it('should have custom dynamoDb', () => {
-			const customDynamoDb = {};
-
-            subscriptions = new Subscriptions({
-                events: testing.events,
-                schema: testing.schema,
-                graphql,
-				dynamoDb: customDynamoDb					
-            });
-
-            expect(subscriptions.queries.dynamoDb).to.be.equal(customDynamoDb);
         });
 
         it('should have iotPublish', () => {
@@ -406,7 +410,9 @@ describe('index.js', () => {
         });
 
         it('should call queries.clear', done => {
-            subscriptions.onDisconnect('topic', {})
+            subscriptions.onDisconnect('topic', {
+                    clientId: 'clientId'
+                })
                 .subscribe(() => {
                     expect(subscriptions.queries.clear).to.have.been.calledWithExactly({
                         clientId: 'clientId'
@@ -415,12 +421,41 @@ describe('index.js', () => {
         });
 
         it('should return', done => {
-            subscriptions.onDisconnect('topic', {})
+            subscriptions.onDisconnect('topic', {
+                    clientId: 'clientId'
+                })
                 .subscribe(response => {
                     expect(response).to.deep.equal({
-                        clientId: 'clientId'
+                        onDisconnect: {
+                            clientId: 'clientId'
+                        }
                     });
                 }, null, done);
+        });
+
+        describe('hook', () => {
+            beforeEach(() => {
+                subscriptions.hooks.onDisconnect = sinon.stub()
+                    .callsFake(args => Observable.of(args));
+            });
+
+            afterEach(() => {
+                subscriptions.hooks.onDisconnect = null;
+            });
+
+            it('should call hook', done => {
+                subscriptions.onDisconnect('topic', {
+                        clientId: 'clientId'
+                    })
+                    .subscribe(() => {
+                        expect(subscriptions.hooks.onDisconnect).to.have.been.calledWithExactly({
+                            topic: 'topic',
+                            payload: {
+                                clientId: 'clientId'
+                            }
+                        });
+                    }, null, done);
+            });
         });
 
         describe('error', () => {
@@ -645,6 +680,33 @@ describe('index.js', () => {
                 .subscribe(response => {
                     expect(response.length).to.equal(0);
                 }, null, done);
+        });
+
+        describe('hook', () => {
+            beforeEach(() => {
+                subscriptions.hooks.onSubscribe = sinon.stub()
+                    .callsFake(args => Observable.of(args));
+            });
+
+            afterEach(() => {
+                subscriptions.hooks.onSubscribe = null;
+            });
+
+            it('should call hook', done => {
+                subscriptions.onSubscribe('topic', {
+                        ...query,
+                        clientId: 'clientId'
+                    })
+                    .subscribe(() => {
+                        expect(subscriptions.hooks.onSubscribe).to.have.been.calledWithExactly({
+                            topic: 'topic',
+                            payload: {
+                                ...query,
+                                clientId: 'clientId'
+                            }
+                        });
+                    }, null, done);
+            });
         });
 
         describe('no source', () => {
@@ -1028,6 +1090,31 @@ describe('index.js', () => {
                         []
                     ]);
                 }, null, done);
+        });
+
+        describe('hook', () => {
+            beforeEach(() => {
+                subscriptions.hooks.onInbound = sinon.stub()
+                    .callsFake(args => Observable.of(args));
+            });
+
+            afterEach(() => {
+                subscriptions.hooks.onInbound = null;
+            });
+
+            it('should call hook', done => {
+                subscriptions.onInbound('topic', {
+                        text: 'text'
+                    })
+                    .subscribe(() => {
+                        expect(subscriptions.hooks.onInbound).to.have.been.calledWithExactly({
+                            topic: 'topic',
+                            payload: {
+                                text: 'text'
+                            }
+                        });
+                    }, null, done);
+            });
         });
 
         describe('query error', () => {

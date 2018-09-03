@@ -40,16 +40,26 @@ Observable.prototype.onRetryableError = function(callback = {}) {
     }));
 };
 
+const eventHook = (args, hook) => Observable.of(args)
+    .mergeMap(args => {
+        if (_.isFunction(hook)) {
+            return hook(args);
+        }
+
+        return Observable.of(args);
+    });
+
 module.exports = class Subscriptions {
     constructor(args = {}) {
         const {
             contextValue,
+            dynamoDb = null,
             events,
-            schema,
             graphql,
-            topics,
+            hooks = {},
+            schema,
             tableName = 'graphqlSubscriptionQueries',
-            dynamoDb = null
+            topics
         } = args;
 
         if (!events) {
@@ -73,6 +83,7 @@ module.exports = class Subscriptions {
             disconnect: '$aws/events/presence/disconnected'
         });
         this.graphql = graphqlFactory(graphql, schema);
+        this.hooks = hooks;
 
         this.dynamoDb = dynamoDb || new DynamoDB({
             client: AWS.dynamoDb
@@ -135,185 +146,212 @@ module.exports = class Subscriptions {
     }
 
     onDisconnect(topic, payload) {
-        const {
-            clientId = null
-        } = payload;
+        return eventHook({
+                topic,
+                payload
+            }, this.hooks.onDisconnect)
+            .mergeMap(({
+                topic,
+                payload
+            }) => {
+                const {
+                    clientId = null
+                } = payload;
 
-        if (!clientId) {
-            return Observable.empty();
-        }
-
-        return this.queries.clear({
-                clientId
-            })
-            .mapTo({
-                onDisconnect: {
-                    clientId
+                if (!clientId) {
+                    return Observable.empty();
                 }
-            })
-            .onRetryableError(err => ({
-                retryable: err.retryable,
-                delay: err.retryDelay,
-                max: 5
-            }))
-            .catch(err => Observable.throw(beautyError(err, {
-                scope: 'onDisconnect',
-                clientId
-            })));
+
+                return this.queries.clear({
+                        clientId
+                    })
+                    .mapTo({
+                        onDisconnect: {
+                            clientId
+                        }
+                    })
+                    .onRetryableError(err => ({
+                        retryable: err.retryable,
+                        delay: err.retryDelay,
+                        max: 5
+                    }))
+                    .catch(err => Observable.throw(beautyError(err, {
+                        scope: 'onDisconnect',
+                        clientId
+                    })));
+            });
     }
 
     onSubscribe(topic, payload) {
-        const {
-            clientId = null,
-                contextValue = {},
-                source = null,
-                variableValues = {}
-        } = payload;
+        return eventHook({
+                topic,
+                payload
+            }, this.hooks.onSubscribe)
+            .mergeMap(({
+                topic,
+                payload
+            }) => {
+                const {
+                    clientId = null,
+                    contextValue = {},
+                    source = null,
+                    variableValues = {}
+                } = payload;
 
-        const isMqtt = !!topic;
-        const exclusivePayload = _.omit(payload, [
-            'clientId',
-            'contextValue',
-            'source',
-            'variableValues'
-        ]);
+                const isMqtt = !!topic;
+                const exclusivePayload = _.omit(payload, [
+                    'clientId',
+                    'contextValue',
+                    'source',
+                    'variableValues'
+                ]);
 
-        if (!clientId) {
-            return Observable.empty();
-        }
+                if (!clientId) {
+                    return Observable.empty();
+                }
 
-        if (!source) {
-            return this.publish(clientId, {
-                    errors: [
-                        beautyError('no source provided.')
-                    ]
-                })
-                .mergeMap(() => Observable.throw(beautyError('no source provided.', {
-                    scope: 'onSubscribe',
-                    clientId
-                })));
-        }
-
-        const validation = this.graphqlValidate(source);
-
-        if (validation.errors && validation.errors.length) {
-            isMqtt && this.publish(clientId, {
-                errors: validation.errors
-            });
-
-            return Observable.throw(beautyError('invalid source.', {
-                scope: 'onSubscribe',
-                clientId,
-                contextValue,
-                errors: validation.errors,
-                source,
-                variableValues
-            }));
-        }
-
-        const query = {
-            contextValue,
-            name: validation.name,
-            source,
-            variableValues
-        };
-
-        const queryEvent = this.events[query.name];
-        const inbound = queryEvent && queryEvent.inbound(clientId, query, exclusivePayload);
-
-        if (inbound && inbound.length) {
-            const documentString = JSON.stringify(validation.document);
-            const queryString = JSON.stringify(query);
-
-            return Observable.from(inbound)
-                .mergeMap(topic => {
-                    const id = md5(topic + queryString);
-
-                    return this.queries.insertOrUpdate({
-                            clientId,
-                            document: documentString,
-                            id,
-                            topic,
-                            query: queryString,
-                            ttl: _.floor((_.now() / 1000) + 43200) // 12 hours
+                if (!source) {
+                    return this.publish(clientId, {
+                            errors: [
+                                beautyError('no source provided.')
+                            ]
                         })
-                        .mapTo({
-                            onSubscribe: {
-                                clientId,
-                                id,
-                                source,
-                                topic
-                            }
-                        })
-                        .onRetryableError(err => ({
-                            retryable: err.retryable,
-                            delay: err.retryDelay,
-                            max: 5
-                        }))
-                        .catch(err => Observable.throw(beautyError(err, {
-                            scope: 'onSubscribe.insert',
-                            clientId,
-                            contextValue,
-                            errors: validation.errors,
-                            id,
-                            source,
-                            variableValues,
-                            topic
+                        .mergeMap(() => Observable.throw(beautyError('no source provided.', {
+                            scope: 'onSubscribe',
+                            clientId
                         })));
-                })
-                .toArray();
-        }
+                }
 
-        return Observable.of([]);
+                const validation = this.graphqlValidate(source);
+
+                if (validation.errors && validation.errors.length) {
+                    isMqtt && this.publish(clientId, {
+                        errors: validation.errors
+                    });
+
+                    return Observable.throw(beautyError('invalid source.', {
+                        scope: 'onSubscribe',
+                        clientId,
+                        contextValue,
+                        errors: validation.errors,
+                        source,
+                        variableValues
+                    }));
+                }
+
+                const query = {
+                    contextValue,
+                    name: validation.name,
+                    source,
+                    variableValues
+                };
+
+                const queryEvent = this.events[query.name];
+                const inbound = queryEvent && queryEvent.inbound(clientId, query, exclusivePayload);
+
+                if (inbound && inbound.length) {
+                    const documentString = JSON.stringify(validation.document);
+                    const queryString = JSON.stringify(query);
+
+                    return Observable.from(inbound)
+                        .mergeMap(topic => {
+                            const id = md5(topic + queryString);
+
+                            return this.queries.insertOrUpdate({
+                                    clientId,
+                                    document: documentString,
+                                    id,
+                                    topic,
+                                    query: queryString,
+                                    ttl: _.floor((_.now() / 1000) + 43200) // 12 hours
+                                })
+                                .mapTo({
+                                    onSubscribe: {
+                                        clientId,
+                                        id,
+                                        source,
+                                        topic
+                                    }
+                                })
+                                .onRetryableError(err => ({
+                                    retryable: err.retryable,
+                                    delay: err.retryDelay,
+                                    max: 5
+                                }))
+                                .catch(err => Observable.throw(beautyError(err, {
+                                    scope: 'onSubscribe.insert',
+                                    clientId,
+                                    contextValue,
+                                    errors: validation.errors,
+                                    id,
+                                    source,
+                                    variableValues,
+                                    topic
+                                })));
+                        })
+                        .toArray();
+                }
+
+                return Observable.of([]);
+            });
     }
 
     onInbound(topic, payload) {
-        const topics = this.queries.request
-            .index('topic')
-            .addPlaceholderName('topic')
-            .addPlaceholderValue({
-                topic
-            })
-            .query('#topic = :topic')
-            .onRetryableError(err => ({
-                retryable: err.retryable,
-                delay: err.retryDelay,
-                max: 5
-            }))
-            .catch(err => Observable.throw(beautyError(err, {
-                scope: 'onInbound.fetchTopics',
-                topic
-            })));
-
-        return topics.mergeMap(({
-            clientId,
-            document,
-            query
-        }) => {
-            query = JSON.parse(query);
-
-            const events = this.events[query.name];
-            const outbound = events && events.outbound(clientId, query, payload);
-
-            if (outbound && outbound.length) {
-                return this.graphqlExecute({
-                        contextValue: _.extend({}, this.contextValue, query.contextValue),
-                        document: JSON.parse(document),
-                        rootValue: payload,
-                        variableValues: query.variableValues
+        return eventHook({
+                topic,
+                payload
+            }, this.hooks.onInbound)
+            .mergeMap(({
+                topic,
+                payload
+            }) => {
+                const topics = this.queries.request
+                    .index('topic')
+                    .addPlaceholderName('topic')
+                    .addPlaceholderValue({
+                        topic
                     })
-                    .mergeMap(response => {
-                        return Observable.from(outbound)
-                            .mergeMap(topic => {
-                                // suppress error early to not break the chain
-                                return this.publish(topic, response)
-                                    .catch(err => Observable.of(err));
-                            })
-                            .toArray();
-                    });
-            }
+                    .query('#topic = :topic')
+                    .onRetryableError(err => ({
+                        retryable: err.retryable,
+                        delay: err.retryDelay,
+                        max: 5
+                    }))
+                    .catch(err => Observable.throw(beautyError(err, {
+                        scope: 'onInbound.fetchTopics',
+                        topic
+                    })));
 
-            return Observable.of([]);
-        });
+                return topics.mergeMap(({
+                    clientId,
+                    document,
+                    query
+                }) => {
+                    query = JSON.parse(query);
+
+                    const events = this.events[query.name];
+                    const outbound = events && events.outbound(clientId, query, payload);
+
+                    if (outbound && outbound.length) {
+                        return this.graphqlExecute({
+                                contextValue: _.extend({}, this.contextValue, query.contextValue),
+                                document: JSON.parse(document),
+                                rootValue: payload,
+                                variableValues: query.variableValues
+                            })
+                            .mergeMap(response => {
+                                return Observable.from(outbound)
+                                    .mergeMap(topic => {
+                                        // suppress error early to not break the chain
+                                        return this.publish(topic, response)
+                                            .catch(err => Observable.of(err));
+                                    })
+                                    .toArray();
+                            });
+                    }
+
+                    return Observable.of([]);
+                });
+            });
     }
 }
