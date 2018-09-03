@@ -41,7 +41,16 @@ Observable.prototype.onRetryableError = function(callback = {}) {
 };
 
 module.exports = class Subscriptions {
-    constructor(events, schema, graphql, topics, tableName = 'graphqlSubscriptionQueries') {
+    constructor(args = {}) {
+        const {
+            events,
+            schema,
+            graphql,
+            topics,
+            tableName = 'graphqlSubscriptionQueries',
+            dynamoDb = null
+        } = args;
+
         if (!events) {
             throw new Error('events is required.');
         }
@@ -63,7 +72,7 @@ module.exports = class Subscriptions {
         });
         this.graphql = graphqlFactory(graphql, schema);
 
-        this.dynamoDb = new DynamoDB({
+        this.dynamoDb = dynamoDb || new DynamoDB({
             client: AWS.dynamoDb
         });
 
@@ -208,7 +217,7 @@ module.exports = class Subscriptions {
         };
 
         const queryEvent = this.events[query.name];
-		const inbound = queryEvent && queryEvent.inbound(clientId, query, exclusivePayload);
+        const inbound = queryEvent && queryEvent.inbound(clientId, query, exclusivePayload);
 
         if (inbound && inbound.length) {
             const documentString = JSON.stringify(validation.document);

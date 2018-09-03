@@ -104,9 +104,17 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 		}
 	};
 
+	const subscriptions = new Subscriptions({
+		events,
+		schema,
+		graphql,
+		topics: {},
+		tableName = 'graphqlSubscriptionQueries',
+		dynamoDb = null
+	});
+	
 	exports.handler = (event, context, callback) => {
 		if (event.type === 'mqttIncoming') {
-			const subscriptions = new Subscriptions(events, schema, graphql);
 			const {
 				payload,
 				topic
