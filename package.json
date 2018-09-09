@@ -1,6 +1,6 @@
 {
   "name": "smallorange-lambda-iot-graphql-subscriptions",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "main": "index.js",
   "author": "Felipe Rohde",
   "license": "MIT",
