@@ -15,7 +15,7 @@
   "scripts": {
     "test": "./node_modules/.bin/_mocha **.spec.js --watch",
     "testOnce": "./node_modules/.bin/_mocha **.spec.js",
-    "publish": "npm version patch -m 'Bump %s' && git push origin master && npm publish"
+    "deploy": "npm version patch -m 'Bump %s' && git push origin master && npm publish"
   },
   "devDependencies": {
     "chai": "^4.1.2",
