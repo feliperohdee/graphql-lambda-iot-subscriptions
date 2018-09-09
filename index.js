@@ -236,7 +236,7 @@ module.exports = class Subscriptions {
                 } else {
                     const validation = this.graphqlValidate(source);
 
-                    if (validation.errors && validation.errors.length) {
+                    if (_.size(validation.errors)) {
                         isMqtt && this.publish(clientId, {
                             errors: validation.errors
                         });
@@ -263,7 +263,7 @@ module.exports = class Subscriptions {
                     variableValues: query.variableValues
                 }, exclusivePayload);
 
-                if (inbound && inbound.length) {
+                if (_.size(inbound)) {
                     const documentString = localQuery ? null : JSON.stringify(query.document);
                     const queryString = JSON.stringify({
                         contextValue: query.contextValue,
@@ -330,6 +330,29 @@ module.exports = class Subscriptions {
                         topic
                     })
                     .query('#topic = :topic')
+                    .reduce((reduction, {
+                        id,
+                        clientId,
+                        document,
+                        query
+                    }) => {
+                        if (!reduction[id]) {
+                            reduction[id] = {
+                                clientIds: [clientId],
+                                document,
+                                query
+                            };
+                        } else {
+                            reduction[id] = _.extend({}, reduction[id], {
+                                clientIds: reduction[id].clientIds.concat(clientId)
+                            });
+                        }
+
+                        return reduction;
+                    }, {})
+                    .mergeMap(response => {
+                        return Observable.from(_.values(response));
+                    })
                     .onRetryableError(err => ({
                         retryable: err.retryable,
                         delay: err.retryDelay,
@@ -341,16 +364,19 @@ module.exports = class Subscriptions {
                     })));
 
                 return topics.mergeMap(({
-                        clientId,
+                        clientIds,
                         document,
                         query
                     }) => {
                         query = JSON.parse(query);
 
                         const events = this.events[query.name];
-                        const outbound = events && events.outbound(clientId, query, payload);
+                        const outbound = events ? _.flatMap(clientIds, clientId => {
+                                return events.outbound(clientId, query, payload);
+                            })
+                            .filter(Boolean) : [];
 
-                        if (outbound && outbound.length) {
+                        if (_.size(outbound)) {
                             const localQuery = this.localQueries[query.source];
 
                             return this.graphqlExecute({

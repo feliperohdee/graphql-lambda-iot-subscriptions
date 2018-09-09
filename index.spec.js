@@ -982,25 +982,30 @@ describe('index.js', () => {
                 .returns(Observable.of({
                     clientId: 'clientId',
                     document: documentString,
+                    id: 'id-1',
                     query: queryString
                 }, {
-                    clientId: 'clientId',
+                    clientId: 'clientId1',
                     document: documentString,
+                    id: 'id-1',
                     query: queryString
                 }, {
-                    clientId: 'clientId',
+                    clientId: 'clientId2',
                     document: documentString,
+                    id: 'id-1',
                     query: queryString
                 }, {
-                    clientId: 'clientId',
+                    clientId: 'clientId3',
                     document: documentString,
+                    id: 'id-2',
                     query: JSON.stringify({
                         ...query,
                         name: 'inexistent'
                     })
                 }, {
-                    clientId: 'clientId',
+                    clientId: 'clientId4',
                     document: JSON.stringify(''),
+                    id: 'id-3',
                     query: JSON.stringify({
                         ...query,
                         source: 'onMessage'
@@ -1041,7 +1046,7 @@ describe('index.js', () => {
                     text: 'text'
                 })
                 .subscribe(null, null, () => {
-                    expect(subscriptions.graphqlExecute).to.have.callCount(4);
+                    expect(subscriptions.graphqlExecute).to.have.callCount(2);
                     expect(subscriptions.graphqlExecute).to.have.been.calledWithExactly({
                         contextValue: _.extend({}, subscriptions.contextValue, query.contextValue),
                         document: JSON.parse(documentString),
@@ -1068,26 +1073,21 @@ describe('index.js', () => {
                     text: 'text'
                 })
                 .subscribe(null, null, () => {
+                    expect(subscriptions.publish).to.have.callCount(8);
                     expect(testing.events.onMessage.outbound).to.have.callCount(4);
                     expect(testing.events.onMessage.outbound).to.have.been.calledWithExactly('clientId', query, {
                         text: 'text'
                     });
-                    done();
-                });
-        });
-
-        it('should publish to each client each outbound topic', done => {
-            subscriptions.onInbound('topic', {
-                    text: 'text'
-                })
-                .subscribe(null, null, () => {
-                    expect(subscriptions.publish).to.have.callCount(8);
-                    expect(subscriptions.publish).to.have.been.calledWithExactly('clientId', {
-                        data: {
-                            onMessage: {
-                                text: 'text'
-                            }
-                        }
+                    expect(testing.events.onMessage.outbound).to.have.been.calledWithExactly('clientId1', query, {
+                        text: 'text'
+                    });
+                    expect(testing.events.onMessage.outbound).to.have.been.calledWithExactly('clientId2', query, {
+                        text: 'text'
+                    });
+                    expect(testing.events.onMessage.outbound).to.have.been.calledWithExactly('clientId4', _.extend({}, query, {
+                        source: 'onMessage'
+                    }), {
+                        text: 'text'
                     });
                     expect(subscriptions.publish).to.have.been.calledWithExactly('another', {
                         data: {
@@ -1136,7 +1136,7 @@ describe('index.js', () => {
                                     }
                                 }
                             },
-                            topic: 'clientId'
+                            topic: 'clientId1'
                         }
                     }, {
                         publish: {
@@ -1158,7 +1158,7 @@ describe('index.js', () => {
                                     }
                                 }
                             },
-                            topic: 'clientId'
+                            topic: 'clientId2'
                         }
                     }, {
                         publish: {
@@ -1180,7 +1180,7 @@ describe('index.js', () => {
                                     }
                                 }
                             },
-                            topic: 'clientId'
+                            topic: 'clientId4'
                         }
                     }, {
                         publish: {
