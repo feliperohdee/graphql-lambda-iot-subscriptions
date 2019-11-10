@@ -7,14 +7,13 @@ const chai = require('chai');
 const sinon = require('sinon');
 const sinonChai = require('sinon-chai');
 const md5 = require('md5');
-const beautyError = require('smallorange-beauty-error');
+const beautyError = require('simple-beauty-error');
 const graphql = require('graphql');
+const rx = require('rxjs');
+const rxop = require('rxjs/operators');
 const {
     Request
-} = require('smallorange-dynamodb-client');
-const {
-    Observable
-} = require('rxjs');
+} = require('rxjs-dynamodb-client');
 const {
     GraphQLSchema
 } = require('graphql');
@@ -34,7 +33,7 @@ describe('index.js', () => {
 
     before(() => {
         sinon.stub(Queries.prototype, 'createTable')
-            .returns(Observable.empty());
+            .returns(rx.empty());
     });
 
     after(() => {
@@ -236,13 +235,13 @@ describe('index.js', () => {
     describe('handle', () => {
         beforeEach(() => {
             sinon.stub(subscriptions, 'onInbound')
-                .returns(Observable.empty());
+                .returns(rx.empty());
 
             sinon.stub(subscriptions, 'onSubscribe')
-                .returns(Observable.empty());
+                .returns(rx.empty());
 
             sinon.stub(subscriptions, 'onDisconnect')
-                .returns(Observable.empty());
+                .returns(rx.empty());
         });
 
         afterEach(() => {
@@ -293,31 +292,35 @@ describe('index.js', () => {
 
                 sinon.stub(subscriptions, 'onInbound')
                     .onFirstCall()
-                    .returns(Observable.throw('no beauty error'))
+                    .returns(rx.throwError('no beauty error'))
                     .onSecondCall()
-                    .returns(Observable.throw(beautyError('beauty error')));
+                    .returns(rx.throwError(beautyError('beauty error')));
             });
 
             it('should handle beauty errors', done => {
-                Observable.merge(
+                rx.merge(
                         subscriptions.handle('subscriptions/inbound/messages', {
                             text: 'Lorem ipsum dolor sit amet.'
                         })
-                        .catch(err => {
-                            expect(err.message).to.equal('no beauty error');
-                            expect(err.context).to.be.an('object');
+                        .pipe(
+                            rxop.catchError(err => {
+                                expect(err.message).to.equal('no beauty error');
+                                expect(err.context).to.be.an('object');
 
-                            return Observable.empty();
-                        }),
+                                return rx.empty();
+                            })
+                        ),
                         subscriptions.handle('subscriptions/inbound/messages', {
                             text: 'Lorem ipsum dolor sit amet.'
                         })
-                        .catch(err => {
-                            expect(err.message).to.equal('beauty error');
-                            expect(err.context).to.be.an('object');
+                        .pipe(
+                            rxop.catchError(err => {
+                                expect(err.message).to.equal('beauty error');
+                                expect(err.context).to.be.an('object');
 
-                            return Observable.empty();
-                        })
+                                return rx.empty();
+                            })
+                        )
                     )
                     .subscribe(null, null, done);
             });
@@ -327,7 +330,7 @@ describe('index.js', () => {
     describe('publish', () => {
         beforeEach(() => {
             sinon.stub(subscriptions, 'iotPublish')
-                .returns(Observable.of({}));
+                .returns(rx.of({}));
         });
 
         afterEach(() => {
@@ -379,10 +382,12 @@ describe('index.js', () => {
                         err.retryable = true;
                         err.retryDelay = 1;
 
-                        return Observable.throw(err)
-                            .do(null, err => {
-                                callback(err);
-                            });
+                        return rx.throwError(err)
+                            .pipe(
+                                rxop.tap(null, err => {
+                                    callback(err);
+                                })
+                            );
                     });
             });
 
@@ -418,7 +423,7 @@ describe('index.js', () => {
     describe('onDisconnect', () => {
         beforeEach(() => {
             sinon.stub(subscriptions.queries, 'clear')
-                .returns(Observable.of({}));
+                .returns(rx.of({}));
         });
 
         afterEach(() => {
@@ -462,7 +467,7 @@ describe('index.js', () => {
         describe('hook', () => {
             beforeEach(() => {
                 subscriptions.hooks.onDisconnect = sinon.stub()
-                    .callsFake(args => Observable.of(args));
+                    .callsFake(args => rx.of(args));
             });
 
             afterEach(() => {
@@ -498,10 +503,12 @@ describe('index.js', () => {
                         err.retryable = true;
                         err.retryDelay = 1;
 
-                        return Observable.throw(err)
-                            .do(null, err => {
-                                callback(err);
-                            });
+                        return rx.throwError(err)
+                            .pipe(
+                                rxop.tap(null, err => {
+                                    callback(err);
+                                })
+                            );
                     });
             });
 
@@ -556,9 +563,9 @@ describe('index.js', () => {
             sinon.spy(testing.events.onMessage, 'inbound');
             sinon.spy(subscriptions, 'graphqlValidate');
             sinon.stub(subscriptions, 'publish')
-                .returns(Observable.of({}));
+                .returns(rx.of({}));
             sinon.stub(subscriptions.queries, 'insertOrUpdate')
-                .returns(Observable.of({}));
+                .returns(rx.of({}));
 
         });
 
@@ -580,13 +587,12 @@ describe('index.js', () => {
         });
 
         it('should call query.inbound', done => {
-            subscriptions.onSubscribe('topic', {
-                    ...query,
+            subscriptions.onSubscribe('topic', _.extend({}, query, {
                     clientId: 'clientId',
                     payload: {
                         payload: 'payload'
                     }
-                })
+                }))
                 .subscribe(() => {
                     expect(testing.events.onMessage.inbound).to.have.been.calledWithExactly('clientId', {
                         contextValue: query.contextValue,
@@ -612,10 +618,9 @@ describe('index.js', () => {
             const id1 = md5('subscriptions/inbound/messages' + queryString);
             const id2 = md5('subscriptions/inbound/anotherMessages' + queryString);
 
-            subscriptions.onSubscribe('topic', {
-                    ...query,
+            subscriptions.onSubscribe('topic', _.extend({}, query, {
                     clientId: 'clientId'
-                })
+                }))
                 .subscribe(() => {
                     expect(subscriptions.queries.insertOrUpdate).to.have.been.calledTwice;
 
@@ -642,10 +647,9 @@ describe('index.js', () => {
         });
 
         it('should return', done => {
-            subscriptions.onSubscribe('topic', {
-                    ...query,
+            subscriptions.onSubscribe('topic', _.extend({}, query, {
                     clientId: 'clientId'
-                })
+                }))
                 .subscribe(response => {
                     expect(response).to.deep.equal([{
                         onSubscribe: {
@@ -666,15 +670,13 @@ describe('index.js', () => {
         });
 
         it('should not duplicate query to same client', done => {
-            Observable.forkJoin(
-                    subscriptions.onSubscribe('topic', {
-                        ...query,
+            rx.forkJoin(
+                    subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    }),
-                    subscriptions.onSubscribe('topic', {
-                        ...query,
+                    })),
+                    subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                 )
                 .subscribe(([
                     subscribe1,
@@ -699,10 +701,9 @@ describe('index.js', () => {
 				}
 			}`;
 
-            subscriptions.onSubscribe('topic', {
-                    ...query,
+            subscriptions.onSubscribe('topic', _.extend({}, query, {
                     clientId: 'clientId'
-                })
+                }))
                 .subscribe(response => {
                     expect(response.length).to.equal(0);
                 }, null, done);
@@ -718,11 +719,10 @@ describe('index.js', () => {
             });
 
             it('should return', done => {
-                subscriptions.onSubscribe('topic', {
-                        ...query,
+                subscriptions.onSubscribe('topic', _.extend({}, query, {
                         source: 'onMessage',
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(response => {
                         expect(response).to.deep.equal([{
                             onSubscribe: {
@@ -746,7 +746,7 @@ describe('index.js', () => {
         describe('hook', () => {
             beforeEach(() => {
                 subscriptions.hooks.onSubscribe = sinon.stub()
-                    .callsFake(args => Observable.of(args));
+                    .callsFake(args => rx.of(args));
             });
 
             afterEach(() => {
@@ -754,17 +754,15 @@ describe('index.js', () => {
             });
 
             it('should call hook', done => {
-                subscriptions.onSubscribe('topic', {
-                        ...query,
+                subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(() => {
                         expect(subscriptions.hooks.onSubscribe).to.have.been.calledWithExactly({
                             topic: 'topic',
-                            payload: {
-                                ...query,
+                            payload: _.extend({}, query, {
                                 clientId: 'clientId'
-                            }
+                            })
                         });
                     }, null, done);
             });
@@ -774,10 +772,9 @@ describe('index.js', () => {
             it('should send error to client', done => {
                 query.source = null;
 
-                subscriptions.onSubscribe('topic', {
-                        ...query,
+                subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(null, err => {
                         const args = subscriptions.publish.firstCall.args;
 
@@ -791,10 +788,9 @@ describe('index.js', () => {
             it('should throw beautified error', done => {
                 query.source = null;
 
-                subscriptions.onSubscribe('topic', {
-                        ...query,
+                subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(null, err => {
                         expect(err.message).to.equal('no source provided.');
                         expect(err.context).to.deep.equal({
@@ -808,10 +804,9 @@ describe('index.js', () => {
 
         describe('validation', () => {
             it('should call graphqlValidate', done => {
-                subscriptions.onSubscribe('topic', {
-                        ...query,
+                subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(() => {
                         expect(subscriptions.graphqlValidate).to.have.been.calledWithExactly(query.source);
                     }, null, done);
@@ -824,10 +819,9 @@ describe('index.js', () => {
 					}
 				}`;
 
-                subscriptions.onSubscribe('topic', {
-                        ...query,
+                subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(null, err => {
                         const args = subscriptions.publish.firstCall.args;
 
@@ -847,10 +841,9 @@ describe('index.js', () => {
 					}
 				}`;
 
-                subscriptions.onSubscribe(null, {
-                        ...query,
+                subscriptions.onSubscribe(null, _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(null, err => {
                         expect(subscriptions.publish).not.to.have.been.called;
 
@@ -865,10 +858,9 @@ describe('index.js', () => {
 					}
 				}`;
 
-                subscriptions.onSubscribe(null, {
-                        ...query,
+                subscriptions.onSubscribe(null, _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(null, err => {
                         expect(err.message).to.equal('invalid source.');
                         expect(err.context).to.have.all.keys([
@@ -900,18 +892,19 @@ describe('index.js', () => {
                         err.retryable = true;
                         err.retryDelay = 1;
 
-                        return Observable.throw(err)
-                            .do(null, err => {
-                                callback(err);
-                            });
+                        return rx.throwError(err)
+                            .pipe(
+                                rxop.tap(null, err => {
+                                    callback(err);
+                                })
+                            );
                     });
             });
 
             it('should retry times if retryable', done => {
-                subscriptions.onSubscribe('topic', {
-                        ...query,
+                subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(null, err => {
                         expect(callback).to.have.callCount(11);
                         done();
@@ -919,10 +912,9 @@ describe('index.js', () => {
             });
 
             it('should throw beautified error', done => {
-                subscriptions.onSubscribe('topic', {
-                        ...query,
+                subscriptions.onSubscribe('topic', _.extend({}, query, {
                         clientId: 'clientId'
-                    })
+                    }))
                     .subscribe(null, err => {
                         expect(err.message).to.equal('retryable error');
                         expect(err.context).to.have.all.keys([
@@ -979,7 +971,7 @@ describe('index.js', () => {
             documentString = JSON.stringify(validation.document);
 
             sinon.stub(Request.prototype, 'query')
-                .returns(Observable.of({
+                .returns(rx.of({
                     clientId: 'clientId',
                     document: documentString,
                     id: 'id-1',
@@ -998,22 +990,20 @@ describe('index.js', () => {
                     clientId: 'clientId3',
                     document: documentString,
                     id: 'id-2',
-                    query: JSON.stringify({
-                        ...query,
+                    query: JSON.stringify(_.extend({}, query, {
                         name: 'inexistent'
-                    })
+                    }))
                 }, {
                     clientId: 'clientId4',
                     document: JSON.stringify(''),
                     id: 'id-3',
-                    query: JSON.stringify({
-                        ...query,
+                    query: JSON.stringify(_.extend({}, query, {
                         source: 'onMessage'
-                    })
+                    }))
                 }));
 
             sinon.stub(subscriptions, 'publish')
-                .callsFake((topic, payload) => Observable.of({
+                .callsFake((topic, payload) => rx.of({
                     publish: {
                         topic,
                         payload
@@ -1200,7 +1190,7 @@ describe('index.js', () => {
         describe('hook', () => {
             beforeEach(() => {
                 subscriptions.hooks.onInbound = sinon.stub()
-                    .callsFake(args => Observable.of(args));
+                    .callsFake(args => rx.of(args));
             });
 
             afterEach(() => {
@@ -1233,14 +1223,15 @@ describe('index.js', () => {
                     .callsFake(() => {
                         const err = new Error('retryable error');
 
-
                         err.retryable = true;
                         err.retryDelay = 10;
 
-                        return Observable.throw(err)
-                            .do(null, err => {
-                                callback(err);
-                            });
+                        return rx.throwError(err)
+                            .pipe(
+                                rxop.tap(null, err => {
+                                    callback(err);
+                                })
+                            );
                     });
             });
 
@@ -1276,8 +1267,8 @@ describe('index.js', () => {
                 subscriptions.publish.restore();
                 sinon.stub(subscriptions, 'publish')
                     .onFirstCall()
-                    .returns(Observable.throw(new Error('error')))
-                    .callsFake((topic, payload) => Observable.of({
+                    .returns(rx.throwError(new Error('error')))
+                    .callsFake((topic, payload) => rx.of({
                         publish: {
                             topic,
                             payload
@@ -1289,7 +1280,9 @@ describe('index.js', () => {
                 subscriptions.onInbound('topic', {
                         text: 'text'
                     })
-                    .toArray()
+                    .pipe(
+                        rxop.toArray()
+                    )
                     .subscribe(response => {
                         expect(response[0][0].message).to.equal('error');
                         expect(response[0][1]).to.deep.equal({

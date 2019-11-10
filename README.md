@@ -1,11 +1,9 @@
-[![CircleCI](https://circleci.com/gh/feliperohdee/smallorange-lambda-iot-graphql-subscriptions.svg?style=svg)](https://circleci.com/gh/feliperohdee/smallorange-lambda-iot-graphql-subscriptions)
-
-# Small Orange Lambda/Iot GraphQL Subscriptions 
+# GraphQL Lambda/Iot Subscriptions 
 
 ## Install
 
-	yarn add smallorange-lambda-iot-graphql-subscriptions
-	npm i smallorange-lambda-iot-graphql-subscriptions --save
+	yarn add graphql-lambda-iot-subscriptions
+	npm i graphql-lambda-iot-subscriptions --save
 
 ## API
 	constructor(
@@ -55,7 +53,7 @@ At AWS Iot Console, go to Rules (ACT) and create three rules:
 		GraphQLString
 	} = require('graphql');
 
-	const Subscriptions = require('smallorange-lambda-iot-graphql-subscriptions');
+	const Subscriptions = require('graphql-lambda-iot-subscriptions');
 
 	const Message = new GraphQLObjectType({
 		name: 'Message',

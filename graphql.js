@@ -1,42 +1,3 @@
-const subscriptionHasSingleRootField = context => {
-	return {
-		OperationDefinition: node => {
-			const operationName = node.name ? node.name.value : '';
-			let numFields = 0;
-
-			node.selectionSet.selections
-				.forEach(selection => {
-					const {
-						kind,
-						name
-					} = selection;
-
-					if (kind === 'Field') {
-						numFields++;
-					} else {
-						context.reportError(new GraphQLError('Subscriptions do not support fragments on the root field.', [
-							node
-						]));
-					}
-				});
-
-			if (numFields > 1) {
-				let err = `Subscription "${operationName}" must have only one field.`;
-
-				if (!operationName) {
-					err = `Subscription must have only one field.`;
-				}
-
-				context.reportError(new GraphQLError(err, [
-					node
-				]));
-			}
-
-			return false;
-		}
-	};
-}
-
 module.exports = (graphql, schema) => {
 	const {
 		GraphQLError,
@@ -45,6 +6,44 @@ module.exports = (graphql, schema) => {
 		specifiedRules,
 		validate
 	} = graphql;
+
+	const subscriptionHasSingleRootField = context => {
+		return {
+			OperationDefinition: node => {
+				const operationName = node.name ? node.name.value : '';
+				let numFields = 0;
+	
+				node.selectionSet.selections
+					.forEach(selection => {
+						const {
+							kind
+						} = selection;
+	
+						if (kind === 'Field') {
+							numFields++;
+						} else {
+							context.reportError(new GraphQLError('Subscriptions do not support fragments on the root field.', [
+								node
+							]));
+						}
+					});
+	
+				if (numFields > 1) {
+					let err = `Subscription "${operationName}" must have only one field.`;
+	
+					if (!operationName) {
+						err = `Subscription must have only one field.`;
+					}
+	
+					context.reportError(new GraphQLError(err, [
+						node
+					]));
+				}
+	
+				return false;
+			}
+		};
+	};
 
 	return {
 		execute: args => execute({

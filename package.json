@@ -1,32 +1,45 @@
 {
-  "name": "smallorange-lambda-iot-graphql-subscriptions",
-  "version": "1.0.8",
-  "main": "index.js",
-  "author": "Felipe Rohde",
-  "license": "MIT",
-  "dependencies": {
-    "aws-sdk": "^2.306.0",
-    "lodash": "^4.17.10",
-    "md5": "^2.2.1",
-    "rxjs": "^5.5.2",
-    "smallorange-beauty-error": "^1.0.6",
-    "smallorange-dynamodb-client": "^1.1.7"
-  },
-  "scripts": {
-    "eslint": "eslint . --ext .js --config node_modules/eslint-config/index.js",
-    "deploy": "npm version patch -m 'Bump %s' && git push origin master && npm publish",
-    "test": "./node_modules/.bin/_mocha *.spec.js --watch"
-  },
-  "devDependencies": {
-    "chai": "^4.1.2",
-    "graphql": "^14.0.0",
-    "mocha": "^4.0.1",
-    "sinon": "^4.1.2",
-    "sinon-chai": "^2.14.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/feliperohdee/smallorange-lambda-iot-graphql-subscriptions"
-  },
-  "homepage": "https://smallorange.co"
+    "name": "graphql-lambda-iot-subscriptions",
+    "version": "1.0.0",
+    "main": "index.js",
+    "author": "Felipe Rohde",
+    "license": "MIT",
+    "dependencies": {
+        "aws-sdk": "^2.568.0",
+        "lodash": "^4.17.15",
+        "md5": "^2.2.1",
+        "rxjs": "^6.5.3",
+        "rxjs-dynamodb-client": "^1.0.1",
+        "simple-beauty-error": "^1.0.0"
+    },
+    "scripts": {
+        "coverage": "rm -rf coverage; NODE_ENV=test nyc ./node_modules/.bin/_mocha *.spec.js --recursive --timeout 5000; rm -rf .nyc_output",
+        "eslint": "eslint . --ext .js --config node_modules/eslint-config/index.js",
+        "deploy": "npm version patch -m 'Bump %s' && git push origin master && npm publish",
+        "test": "./node_modules/.bin/_mocha *.spec.js --watch"
+    },
+    "devDependencies": {
+        "chai": "^4.2.0",
+        "eslint": "^6.6.0",
+        "graphql": "^14.5.8",
+        "mocha": "^6.2.2",
+        "nyc": "^14.1.1",
+        "sinon": "^7.5.0",
+        "sinon-chai": "^3.3.0"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/feliperohdee/graphql-lambda-iot-subscriptions"
+    },
+    "nyc": {
+		"all": true,
+        "reporter": "lcov",
+        "exclude": [
+            "*.spec.js",
+            "AWS.js",
+            "graphql.js",
+            "models/**",
+            "testing/**"
+        ]
+    }
 }

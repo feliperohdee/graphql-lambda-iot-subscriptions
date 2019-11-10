@@ -46,7 +46,7 @@ const events = exports.events = {
 		inbound: (clientId, query, payload) => {
 			return [
 				'subscriptions/inbound/messages',
-				'subscriptions/inbound/anotherMessages',
+				'subscriptions/inbound/anotherMessages'
 			];
 		},
 		outbound: (clientId, query, payload) => {

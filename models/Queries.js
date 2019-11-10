@@ -1,6 +1,6 @@
 const {
 	Crud
-} = require('smallorange-dynamodb-client');
+} = require('rxjs-dynamodb-client');
 
 const tableSchema = {
 	primaryKeys: {
@@ -77,4 +77,4 @@ module.exports = class Queries extends Crud {
 					}]
 				}));
 	}
-}
+};
