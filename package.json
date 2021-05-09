@@ -6,7 +6,7 @@
     "license": "MIT",
     "dependencies": {
         "aws-sdk": "^2.568.0",
-        "lodash": "^4.17.15",
+        "lodash": "^4.17.21",
         "md5": "^2.2.1",
         "rxjs": "^6.5.3",
         "rxjs-dynamodb-client": "^1.0.1",
